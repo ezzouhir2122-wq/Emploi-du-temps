@@ -270,7 +270,7 @@ function PoolMixedView({
                     <td key={jour} className="px-2 py-2 text-center">
                       <Select
                         value={currentVal}
-                        onValueChange={val => onAssign(formateur.id, jour, val)}
+                        onValueChange={val => onAssign(formateur.id, jour, val ?? '')}
                         disabled={saving === key}
                       >
                         <SelectTrigger className="h-8 w-[150px] text-xs mx-auto">
