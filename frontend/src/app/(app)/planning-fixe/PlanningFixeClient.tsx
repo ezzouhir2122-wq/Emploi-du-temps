@@ -919,11 +919,11 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           <div className="flex-1">
             <PageHeader
               icon={CalendarDays}
-              title="Planning fixe Lundi–Samedi"
+              title="Planning Hebdomadaire"
               subtitle={
                 isPoolMixed
                   ? 'Scénario C actif — Pool mixte : tous les formateurs peuvent être affectés à n\'importe quelle salle.'
-                  : 'Planning permanent — 5 séances/semaine par formateur. Samedi en rotation mensuelle.'
+                  : '5 séances/semaine par formateur · Lun–Ven fixe · Samedi par rotation mensuelle (panneau ⚙ par salle)'
               }
               badge={isPoolMixed ? 'Pool mixte' : 'Fixe'}
             />

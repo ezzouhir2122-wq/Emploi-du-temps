@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   CalendarDays,
-  RotateCcw,
   CalendarRange,
   BarChart3,
   Layers,
@@ -18,13 +17,12 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 const navItems = [
-  { href: '/planning-fixe',   label: 'Planning fixe',   icon: CalendarDays,  desc: 'Lun–Ven' },
-  { href: '/rotation-samedi', label: 'Rotation Samedi', icon: RotateCcw,     desc: 'Cycle 3 sem.' },
-  { href: '/vue-mensuelle',   label: 'Vue mensuelle',   icon: CalendarRange, desc: 'Calendrier' },
-  { href: '/suivi-equite',    label: 'Suivi équité',    icon: BarChart3,     desc: 'Compteurs' },
-  { href: '/scenarios',       label: 'Scénarios',       icon: Layers,        desc: 'A / B / C' },
-  { href: '/exports',         label: 'Exports',         icon: Download,      desc: 'Excel / CSV / PDF' },
-  { href: '/parametres',      label: 'Paramètres',      icon: Settings,      desc: 'Config' },
+  { href: '/planning-fixe',  label: 'Planning Hebdomadaire', icon: CalendarDays,  desc: 'Lun–Sam · Rotation incluse' },
+  { href: '/vue-mensuelle',  label: 'Vue mensuelle',         icon: CalendarRange, desc: 'Calendrier' },
+  { href: '/suivi-equite',   label: 'Suivi équité',          icon: BarChart3,     desc: 'Compteurs' },
+  { href: '/scenarios',      label: 'Scénarios',             icon: Layers,        desc: 'A / B / C' },
+  { href: '/exports',        label: 'Exports',               icon: Download,      desc: 'Excel / CSV / PDF' },
+  { href: '/parametres',     label: 'Paramètres',            icon: Settings,      desc: 'Config' },
 ]
 
 export function Sidebar() {
