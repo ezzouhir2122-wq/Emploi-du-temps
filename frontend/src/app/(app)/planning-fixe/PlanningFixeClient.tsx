@@ -75,6 +75,7 @@ function StandardView({
       {salles.map(salle => {
         const groupe = groupes.find(g => g.salle_id === salle.id)
         const formateursSalle = formateurs.filter(f => f.groupe_id === groupe?.id)
+        const salleLabel = salle.nom.replace('Salle ', 'S')
 
         return (
           <div key={salle.id} className="rounded-lg border bg-card">
@@ -88,9 +89,33 @@ function StandardView({
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground w-36">Formateur</th>
-                    {JOURS_SEMAINE.map(jour => (
-                      <th key={jour} className="px-3 py-2 text-center font-medium text-muted-foreground">{jour}</th>
-                    ))}
+                    {JOURS_SEMAINE.map(jour => {
+                      const matinPris = formateursSalle.some(f => getStatut(f.id, jour) === 'Matin')
+                      const pmPris    = formateursSalle.some(f => getStatut(f.id, jour) === 'Après-midi')
+                      const complete  = matinPris && pmPris
+                      return (
+                        <th key={jour} className="px-2 py-2 text-center font-medium text-muted-foreground min-w-[140px]">
+                          <div>{jour}</div>
+                          <div className="flex justify-center mt-1">
+                            <span
+                              title={`${salle.nom} : ${matinPris ? 'Matin✓' : 'Matin○'} ${pmPris ? 'PM✓' : 'PM○'}`}
+                              className={`text-[9px] font-mono px-1 rounded ${
+                                complete ? 'bg-red-100 text-red-600'
+                                : (matinPris || pmPris) ? 'bg-amber-100 text-amber-600'
+                                : 'bg-green-100 text-green-600'
+                              }`}
+                            >
+                              {salleLabel}{complete ? ' ✓' : matinPris ? ' M' : pmPris ? ' PM' : ' ○'}
+                            </span>
+                          </div>
+                          {complete && (
+                            <div className="flex items-center justify-center gap-0.5 mt-0.5 text-[9px] text-red-500">
+                              <Info className="h-2.5 w-2.5" /> Salle complète
+                            </div>
+                          )}
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -98,23 +123,55 @@ function StandardView({
                     <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-2 font-medium">{formateur.nom}</td>
                       {JOURS_SEMAINE.map(jour => {
-                        const statut = getStatut(formateur.id, jour)
-                        const key = `${formateur.id}-${jour}`
+                        const statut     = getStatut(formateur.id, jour)
+                        const key        = `${formateur.id}-${jour}`
                         const disponibles = getStatutsDisponibles(formateur.id, jour, formateursSalle)
+                        const physiques  = disponibles.filter(s => s === 'Matin' || s === 'Après-midi')
+                        const autres     = disponibles.filter(s => s !== 'Matin' && s !== 'Après-midi')
+                        const salleComplete = formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Matin')
+                                          && formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Après-midi')
+
                         return (
-                          <td key={jour} className="px-3 py-2 text-center">
+                          <td key={jour} className="px-2 py-2 text-center">
                             <Select
                               value={statut ?? ''}
                               onValueChange={val => onStatutChange(formateur.id, jour, val as StatutFixe)}
                               disabled={saving === key}
                             >
-                              <SelectTrigger className="h-8 w-32 text-xs">
+                              <SelectTrigger className="h-8 w-[150px] text-xs mx-auto">
                                 <SelectValue placeholder="—">
-                                  {statut ? <StatutBadge statut={statut} /> : '—'}
+                                  {statut
+                                    ? (statut === 'Distance' || statut === 'Repos')
+                                      ? <StatutBadge statut={statut} />
+                                      : <span className="flex items-center gap-1 text-xs">
+                                          <span className="text-muted-foreground font-mono">{salle.nom}</span>
+                                          <span className="text-muted-foreground">·</span>
+                                          <StatutBadge statut={statut} />
+                                        </span>
+                                    : <span className="text-muted-foreground/50">—</span>
+                                  }
                                 </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
-                                {disponibles.map(s => (
+                                {salleComplete && physiques.length === 0 && (
+                                  <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b">
+                                    <Info className="h-3 w-3 shrink-0" />
+                                    {salle.nom} non disponible
+                                  </div>
+                                )}
+                                {physiques.map(s => (
+                                  <SelectItem key={s} value={s}>
+                                    <span className="flex items-center gap-1.5 text-xs">
+                                      <span className="text-muted-foreground font-mono">{salle.nom}</span>
+                                      <span className="text-muted-foreground">·</span>
+                                      <StatutBadge statut={s} />
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                                {physiques.length > 0 && autres.length > 0 && (
+                                  <div className="h-px bg-border my-1" />
+                                )}
+                                {autres.map(s => (
                                   <SelectItem key={s} value={s}>
                                     <StatutBadge statut={s} />
                                   </SelectItem>
@@ -130,8 +187,10 @@ function StandardView({
               </table>
             </div>
 
-            <div className="border-t px-4 py-2 text-xs text-muted-foreground">
-              <span className="font-medium">Occupation salle</span> — Vérifiez qu&apos;il y a exactement 1 Matin + 1 Après-midi physique par jour (Distance ne compte pas).
+            <div className="border-t px-4 py-2 text-xs text-muted-foreground flex items-center gap-4">
+              <span className="flex items-center gap-1"><span className="bg-green-100 text-green-600 px-1 rounded font-mono text-[9px]">S○</span> Salle libre</span>
+              <span className="flex items-center gap-1"><span className="bg-amber-100 text-amber-600 px-1 rounded font-mono text-[9px]">S M</span> 1 créneau pris</span>
+              <span className="flex items-center gap-1"><span className="bg-red-100 text-red-600 px-1 rounded font-mono text-[9px]">S✓</span> Salle complète</span>
             </div>
           </div>
         )
