@@ -22,13 +22,135 @@ interface Props {
   formateurs: Formateur[]
 }
 
+// ── Helpers ───────────────────────────────────────────────────
+
+function CheckList({
+  label, items, selected, onChange, exclusive, takenBy,
+}: {
+  label: string
+  items: { id: string; nom: string }[]
+  selected: string[]
+  onChange: (ids: string[]) => void
+  exclusive?: boolean
+  takenBy?: (id: string) => string | null
+}) {
+  function toggle(id: string) {
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
+  }
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</p>
+      <div className="rounded-lg border max-h-44 overflow-y-auto divide-y">
+        {items.length === 0 && (
+          <p className="px-3 py-2 text-xs text-muted-foreground italic">Aucun élément disponible</p>
+        )}
+        {items.map(item => {
+          const taken = exclusive ? takenBy?.(item.id) : null
+          const isChecked = selected.includes(item.id)
+          const disabled = !isChecked && !!taken
+          return (
+            <label key={item.id} className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-muted/40 transition-colors ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-[#00968C]"
+                checked={isChecked}
+                disabled={disabled}
+                onChange={() => !disabled && toggle(item.id)}
+              />
+              <span className="text-xs flex-1">{item.nom}</span>
+              {taken && !isChecked && (
+                <span className="text-[10px] text-muted-foreground italic">{taken}</span>
+              )}
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Onglet Pôles ─────────────────────────────────────────────
 
-function PolesTab({ initPoles }: { initPoles: Pole[] }) {
+function PolesTab({
+  initPoles, initSalles, initFormateurs, initGroupes,
+}: {
+  initPoles: Pole[]
+  initSalles: Salle[]
+  initFormateurs: Formateur[]
+  initGroupes: Groupe[]
+}) {
   const [poles, setPoles] = useState<Pole[]>(initPoles)
+  const [salles, setSalles] = useState<Salle[]>(initSalles)
+  const [formateurs, setFormateurs] = useState<Formateur[]>(initFormateurs)
+  const [groupes, setGroupes] = useState<Groupe[]>(initGroupes)
+
   const [newPole, setNewPole] = useState({ nom: '', code: '', description: '' })
+  const [newSalles, setNewSalles] = useState<string[]>([])
+  const [newFormateurs, setNewFormateurs] = useState<string[]>([])
+  const [newGroupes, setNewGroupes] = useState<string[]>([])
+
   const [editingPole, setEditingPole] = useState<Pole | null>(null)
+  const [editSalles, setEditSalles] = useState<string[]>([])
+  const [editFormateurs, setEditFormateurs] = useState<string[]>([])
+  const [editGroupes, setEditGroupes] = useState<string[]>([])
+
   const supabase = createClient()
+
+  // Retourne le nom du pôle qui possède déjà cet item (exclusive)
+  function poleOwnerSalle(salleId: string) {
+    const s = salles.find(x => x.id === salleId)
+    if (!s?.pole_id) return null
+    return poles.find(p => p.id === s.pole_id)?.nom ?? null
+  }
+  function poleOwnerFormateur(fId: string) {
+    const f = formateurs.find(x => x.id === fId)
+    if (!f?.pole_id) return null
+    return poles.find(p => p.id === f.pole_id)?.nom ?? null
+  }
+
+  // Salles disponibles = pas encore affectées à un AUTRE pôle
+  function sallesDisponibles(currentPoleId?: string) {
+    return salles.filter(s => !s.pole_id || s.pole_id === currentPoleId)
+  }
+  function formateursDisponibles(currentPoleId?: string) {
+    return formateurs.filter(f => !f.pole_id || f.pole_id === currentPoleId)
+  }
+
+  async function applyAssignments(poleId: string, selSalles: string[], selFormateurs: string[], selGroupes: string[], prevPoleId?: string) {
+    // Salles : affecter les sélectionnées, désaffecter les anciennes de ce pôle non sélectionnées
+    const prevSalles = salles.filter(s => s.pole_id === (prevPoleId ?? poleId)).map(s => s.id)
+    const toUnassignSalles = prevSalles.filter(id => !selSalles.includes(id))
+    if (selSalles.length) await supabase.from('salles').update({ pole_id: poleId }).in('id', selSalles)
+    if (toUnassignSalles.length) await supabase.from('salles').update({ pole_id: null }).in('id', toUnassignSalles)
+
+    const prevFormateurs = formateurs.filter(f => f.pole_id === (prevPoleId ?? poleId)).map(f => f.id)
+    const toUnassignF = prevFormateurs.filter(id => !selFormateurs.includes(id))
+    if (selFormateurs.length) await supabase.from('formateurs').update({ pole_id: poleId }).in('id', selFormateurs)
+    if (toUnassignF.length) await supabase.from('formateurs').update({ pole_id: null }).in('id', toUnassignF)
+
+    // Groupes (partagés) : affecter sélectionnés, désaffecter ceux du pôle non sélectionnés
+    const prevGroupes = groupes.filter(g => g.pole_id === (prevPoleId ?? poleId)).map(g => g.id)
+    const toUnassignG = prevGroupes.filter(id => !selGroupes.includes(id))
+    if (selGroupes.length) await supabase.from('groupes').update({ pole_id: poleId }).in('id', selGroupes)
+    if (toUnassignG.length) await supabase.from('groupes').update({ pole_id: null }).in('id', toUnassignG)
+
+    // Mise à jour état local
+    setSalles(prev => prev.map(s => {
+      if (selSalles.includes(s.id)) return { ...s, pole_id: poleId }
+      if (toUnassignSalles.includes(s.id)) return { ...s, pole_id: null }
+      return s
+    }))
+    setFormateurs(prev => prev.map(f => {
+      if (selFormateurs.includes(f.id)) return { ...f, pole_id: poleId }
+      if (toUnassignF.includes(f.id)) return { ...f, pole_id: null }
+      return f
+    }))
+    setGroupes(prev => prev.map(g => {
+      if (selGroupes.includes(g.id)) return { ...g, pole_id: poleId }
+      if (toUnassignG.includes(g.id)) return { ...g, pole_id: null }
+      return g
+    }))
+  }
 
   async function handleAdd() {
     if (!newPole.nom.trim()) return
@@ -37,9 +159,19 @@ function PolesTab({ initPoles }: { initPoles: Pole[] }) {
       .insert({ nom: newPole.nom.trim(), code: newPole.code.trim() || null, description: newPole.description.trim() || null })
       .select().single()
     if (error) { toast.error('Erreur lors de la création'); return }
-    setPoles(prev => [...prev, data as Pole].sort((a, b) => a.nom.localeCompare(b.nom)))
+    const created = data as Pole
+    setPoles(prev => [...prev, created].sort((a, b) => a.nom.localeCompare(b.nom)))
+    await applyAssignments(created.id, newSalles, newFormateurs, newGroupes)
     setNewPole({ nom: '', code: '', description: '' })
-    toast.success('Pôle créé')
+    setNewSalles([]); setNewFormateurs([]); setNewGroupes([])
+    toast.success('Pôle créé avec ses affectations')
+  }
+
+  function openEdit(pole: Pole) {
+    setEditingPole(pole)
+    setEditSalles(salles.filter(s => s.pole_id === pole.id).map(s => s.id))
+    setEditFormateurs(formateurs.filter(f => f.pole_id === pole.id).map(f => f.id))
+    setEditGroupes(groupes.filter(g => g.pole_id === pole.id).map(g => g.id))
   }
 
   async function handleUpdate() {
@@ -50,6 +182,7 @@ function PolesTab({ initPoles }: { initPoles: Pole[] }) {
       .eq('id', editingPole.id)
     if (error) { toast.error('Erreur lors de la mise à jour'); return }
     setPoles(prev => prev.map(p => p.id === editingPole.id ? editingPole : p))
+    await applyAssignments(editingPole.id, editSalles, editFormateurs, editGroupes)
     setEditingPole(null)
     toast.success('Pôle mis à jour')
   }
@@ -63,46 +196,57 @@ function PolesTab({ initPoles }: { initPoles: Pole[] }) {
 
   return (
     <div className="space-y-4">
-      {/* Liste */}
+      {/* Liste des pôles */}
       <div className="rounded-lg border divide-y">
         {poles.length === 0 && (
           <p className="px-4 py-6 text-sm text-muted-foreground text-center">Aucun pôle — ajoutez-en un ci-dessous.</p>
         )}
-        {poles.map(pole => (
-          <div key={pole.id} className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#005FAD]/10">
-                <Building2 className="h-4 w-4 text-[#005FAD]" />
+        {poles.map(pole => {
+          const nbSalles = salles.filter(s => s.pole_id === pole.id).length
+          const nbFormateurs = formateurs.filter(f => f.pole_id === pole.id).length
+          const nbGroupes = groupes.filter(g => g.pole_id === pole.id).length
+          return (
+            <div key={pole.id} className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#005FAD]/10">
+                  <Building2 className="h-4 w-4 text-[#005FAD]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className={`font-medium text-sm ${!pole.actif ? 'text-muted-foreground line-through' : ''}`}>
+                      {pole.nom}
+                    </p>
+                    {pole.code && <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{pole.code}</span>}
+                    {!pole.actif && <Badge variant="secondary" className="text-xs">Inactif</Badge>}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {nbSalles > 0 && <span className="text-[10px] text-amber-600"><DoorOpen className="h-3 w-3 inline mr-0.5" />{nbSalles} salle{nbSalles > 1 ? 's' : ''}</span>}
+                    {nbFormateurs > 0 && <span className="text-[10px] text-[#00968C]"><Users className="h-3 w-3 inline mr-0.5" />{nbFormateurs} formateur{nbFormateurs > 1 ? 's' : ''}</span>}
+                    {nbGroupes > 0 && <span className="text-[10px] text-[#005FAD]"><GraduationCap className="h-3 w-3 inline mr-0.5" />{nbGroupes} groupe{nbGroupes > 1 ? 's' : ''}</span>}
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className={`font-medium text-sm ${!pole.actif ? 'text-muted-foreground line-through' : ''}`}>
-                  {pole.nom}
-                </p>
-                {pole.code && <p className="text-xs text-muted-foreground font-mono">{pole.code}</p>}
-                {pole.description && <p className="text-xs text-muted-foreground mt-0.5">{pole.description}</p>}
+              <div className="flex gap-1.5">
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(pole)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost" size="sm"
+                  className={`h-7 px-2 ${pole.actif ? 'text-destructive' : 'text-green-600'}`}
+                  onClick={() => handleToggle(pole)}
+                >
+                  <Power className="h-3.5 w-3.5" />
+                </Button>
               </div>
-              {!pole.actif && <Badge variant="secondary" className="text-xs">Inactif</Badge>}
             </div>
-            <div className="flex gap-1.5">
-              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setEditingPole(pole)}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost" size="sm"
-                className={`h-7 px-2 ${pole.actif ? 'text-destructive' : 'text-green-600'}`}
-                onClick={() => handleToggle(pole)}
-              >
-                <Power className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Édition */}
       {editingPole && (
-        <div className="rounded-lg border p-4 bg-muted/30 space-y-3">
-          <p className="text-sm font-medium">Modifier : {editingPole.nom}</p>
+        <div className="rounded-lg border p-4 bg-muted/30 space-y-4">
+          <p className="text-sm font-semibold">Modifier : {editingPole.nom}</p>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Nom du pôle</Label>
@@ -117,6 +261,36 @@ function PolesTab({ initPoles }: { initPoles: Pole[] }) {
               <Input value={editingPole.description ?? ''} onChange={e => setEditingPole(p => p ? { ...p, description: e.target.value } : null)} className="h-8 text-sm" />
             </div>
           </div>
+          <div className="grid grid-cols-3 gap-4">
+            <CheckList
+              label="Salles (exclusif)"
+              items={sallesDisponibles(editingPole.id)}
+              selected={editSalles}
+              onChange={setEditSalles}
+              exclusive
+              takenBy={id => {
+                const owner = poleOwnerSalle(id)
+                return owner && owner !== editingPole.nom ? owner : null
+              }}
+            />
+            <CheckList
+              label="Formateurs (exclusif)"
+              items={formateursDisponibles(editingPole.id)}
+              selected={editFormateurs}
+              onChange={setEditFormateurs}
+              exclusive
+              takenBy={id => {
+                const owner = poleOwnerFormateur(id)
+                return owner && owner !== editingPole.nom ? owner : null
+              }}
+            />
+            <CheckList
+              label="Groupes (partagés)"
+              items={groupes}
+              selected={editGroupes}
+              onChange={setEditGroupes}
+            />
+          </div>
           <div className="flex gap-2">
             <Button size="sm" onClick={handleUpdate}>Enregistrer</Button>
             <Button size="sm" variant="ghost" onClick={() => setEditingPole(null)}>Annuler</Button>
@@ -125,8 +299,8 @@ function PolesTab({ initPoles }: { initPoles: Pole[] }) {
       )}
 
       {/* Ajout */}
-      <div className="rounded-lg border p-4 space-y-3">
-        <p className="text-sm font-medium flex items-center gap-2"><Plus className="h-4 w-4" /> Nouveau pôle</p>
+      <div className="rounded-lg border p-4 space-y-4">
+        <p className="text-sm font-semibold flex items-center gap-2"><Plus className="h-4 w-4" /> Nouveau pôle</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Nom du pôle *</Label>
@@ -140,6 +314,30 @@ function PolesTab({ initPoles }: { initPoles: Pole[] }) {
             <Label className="text-xs">Description (facultatif)</Label>
             <Input placeholder="Description du pôle..." value={newPole.description} onChange={e => setNewPole(p => ({ ...p, description: e.target.value }))} className="h-8 text-sm" />
           </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <CheckList
+            label="Salles (exclusif)"
+            items={sallesDisponibles()}
+            selected={newSalles}
+            onChange={setNewSalles}
+            exclusive
+            takenBy={id => poleOwnerSalle(id)}
+          />
+          <CheckList
+            label="Formateurs (exclusif)"
+            items={formateursDisponibles()}
+            selected={newFormateurs}
+            onChange={setNewFormateurs}
+            exclusive
+            takenBy={id => poleOwnerFormateur(id)}
+          />
+          <CheckList
+            label="Groupes (partagés)"
+            items={groupes}
+            selected={newGroupes}
+            onChange={setNewGroupes}
+          />
         </div>
         <Button size="sm" onClick={handleAdd} disabled={!newPole.nom.trim()}>
           <Plus className="h-4 w-4 mr-1" /> Créer le pôle
@@ -658,7 +856,7 @@ export function ParametresClient({ poles, salles, groupes, formateurs }: Props) 
         </TabsList>
 
         <TabsContent value="poles">
-          <PolesTab initPoles={poles} />
+          <PolesTab initPoles={poles} initSalles={salles} initFormateurs={formateurs} initGroupes={groupes} />
         </TabsContent>
 
         <TabsContent value="formateurs">
