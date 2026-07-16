@@ -2,14 +2,14 @@
 // Types métier partagés — OFPPT Planning
 // ============================================================
 
-export type JourSemaine = 'Lundi' | 'Mardi' | 'Mercredi' | 'Jeudi' | 'Vendredi'
+export type JourSemaine = 'Lundi' | 'Mardi' | 'Mercredi' | 'Jeudi' | 'Vendredi' | 'Samedi'
 export type StatutFixe = 'Matin' | 'Après-midi' | 'Distance' | 'Repos'
 export type StatutSamedi = 'Matin' | 'Après-midi' | 'Repos'
 export type SemaineCycle = 1 | 2 | 3
 export type TypeScenario = 'groups_fixed' | 'groups_rotating' | 'pool_mixed'
 
 export const JOURS_SEMAINE: JourSemaine[] = [
-  'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi',
+  'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi',
 ]
 
 export const STATUTS_FIXES: StatutFixe[] = ['Matin', 'Après-midi', 'Distance', 'Repos']
