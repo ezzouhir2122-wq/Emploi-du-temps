@@ -7,19 +7,30 @@ import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { CalendarDays, Info, RotateCcw } from 'lucide-react'
+import { CalendarDays, Info, RotateCcw, Wand2, ChevronDown, ChevronUp, Settings2 } from 'lucide-react'
 import type {
   Formateur, Groupe, Salle, PlanningFixe, Scenario,
   JourSemaine, StatutFixe, RotationSamediConfig, CycleReference, StatutSamedi, SemaineCycle,
 } from '@/types/planning'
 import { JOURS_SEMAINE, STATUTS_FIXES } from '@/types/planning'
-import { getMoisCycle, parseISODate } from '@/lib/rotation'
+import { getMoisCycle, getSamedisDuMois, parseISODate, toISODateString } from '@/lib/rotation'
 
 const MOIS_LABELS = [
   'Janvier','Février','Mars','Avril','Mai','Juin',
   'Juillet','Août','Septembre','Octobre','Novembre','Décembre',
 ]
+
+const STATUTS_SAMEDI: StatutSamedi[] = ['Matin', 'Après-midi', 'Repos']
+const POSITIONS_CYCLE: SemaineCycle[] = [1, 2, 3]
+const ROTATION_SUIVANTE: Record<StatutSamedi, StatutSamedi> = {
+  'Matin': 'Après-midi',
+  'Après-midi': 'Repos',
+  'Repos': 'Matin',
+}
 
 interface Props {
   salles: Salle[]
@@ -49,6 +60,168 @@ function getSamediStatut(
   )?.statut
 }
 
+// ── Composants Rotation Samedi (intégrés) ────────────────────
+
+function AncragEditor({
+  ref_, onSave,
+}: {
+  ref_: CycleReference | undefined
+  onSave: (date: string, pos: SemaineCycle) => void
+}) {
+  const [date, setDate] = useState(ref_?.date_ancrage ?? '')
+  const [pos, setPos] = useState<SemaineCycle>(ref_?.semaine_cycle_ancrage ?? 1)
+  return (
+    <div className="px-4 py-3 bg-muted/20 border-b">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Ancrage du cycle</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Mois de référence (1er du mois)</Label>
+          <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-7 w-40 text-xs" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Position dans le cycle</Label>
+          <Select value={String(pos)} onValueChange={v => setPos(Number(v) as SemaineCycle)}>
+            <SelectTrigger className="h-7 w-28 text-xs"><SelectValue>Mois {pos}</SelectValue></SelectTrigger>
+            <SelectContent>
+              {([1, 2, 3] as SemaineCycle[]).map(s => (
+                <SelectItem key={s} value={String(s)} className="text-xs">Mois {s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onSave(date, pos)} disabled={!date}>
+          Enregistrer
+        </Button>
+        {ref_ && (
+          <span className="text-xs text-muted-foreground">
+            Actuel : {ref_.date_ancrage.slice(0, 7)} → Mois {ref_.semaine_cycle_ancrage}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RotationSallePanel({
+  salle, formateursSalle, rotationConfig, cycleRef, previewAnnee, previewMois,
+  onStatutChange, onAutoRotation, onAncrageSave,
+}: {
+  salle: Salle
+  formateursSalle: Formateur[]
+  rotationConfig: RotationSamediConfig[]
+  cycleRef: CycleReference | undefined
+  previewAnnee: number
+  previewMois: number
+  onStatutChange: (salleId: string, pos: SemaineCycle, formateurId: string, statut: StatutSamedi) => void
+  onAutoRotation: (salleId: string, formateursSalle: Formateur[]) => void
+  onAncrageSave: (salleId: string, date: string, pos: SemaineCycle) => void
+}) {
+  function getCfg(pos: SemaineCycle, formateurId: string) {
+    return rotationConfig.find(
+      c => c.salle_id === salle.id && c.semaine_cycle === pos && c.formateur_id === formateurId
+    )
+  }
+
+  const preview = (() => {
+    if (!cycleRef) return []
+    const ancrage = parseISODate(cycleRef.date_ancrage)
+    const position = getMoisCycle(previewAnnee, previewMois, ancrage, cycleRef.semaine_cycle_ancrage)
+    return getSamedisDuMois(previewAnnee, previewMois).map(samedi => ({
+      date: toISODateString(samedi),
+      position,
+      statuts: formateursSalle.map(f => ({
+        formateur: f,
+        statut: (getCfg(position, f.id)?.statut ?? 'Repos') as StatutSamedi,
+      })),
+    }))
+  })()
+
+  return (
+    <div className="border-t bg-muted/10">
+      {/* Ancrage */}
+      <AncragEditor ref_={cycleRef} onSave={(d, p) => onAncrageSave(salle.id, d, p)} />
+
+      {/* Tableau cycle */}
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cycle mensuel — 3 mois</p>
+          <Button size="sm" variant="outline" className="h-6 text-xs gap-1"
+            onClick={() => onAutoRotation(salle.id, formateursSalle)}>
+            <Wand2 className="h-3 w-3" /> Auto-générer Mois 2 &amp; 3
+          </Button>
+        </div>
+        <div className="text-xs text-muted-foreground bg-blue-50 border border-blue-100 rounded px-2 py-1 mb-2">
+          Règle : <strong>Matin</strong> → Après-midi → Repos → Matin…
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-1.5 px-2 font-medium text-muted-foreground text-xs">Formateur</th>
+              {POSITIONS_CYCLE.map(p => (
+                <th key={p} className="text-center py-1.5 px-2 font-medium text-muted-foreground text-xs">Mois {p}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {formateursSalle.map(f => (
+              <tr key={f.id} className="hover:bg-muted/20">
+                <td className="py-1.5 px-2 text-xs font-medium">{f.nom}</td>
+                {POSITIONS_CYCLE.map(pos => {
+                  const cfg = getCfg(pos, f.id)
+                  return (
+                    <td key={pos} className="py-1.5 px-2 text-center">
+                      <Select
+                        value={cfg?.statut ?? 'Repos'}
+                        onValueChange={val => onStatutChange(salle.id, pos, f.id, val as StatutSamedi)}
+                      >
+                        <SelectTrigger className="h-7 w-28 text-xs mx-auto">
+                          <SelectValue><StatutBadge statut={cfg?.statut ?? 'Repos'} /></SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUTS_SAMEDI.map(s => (
+                            <SelectItem key={s} value={s} className="text-xs"><StatutBadge statut={s} /></SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Prévisualisation */}
+      {cycleRef && preview.length > 0 && (
+        <div className="border-t px-4 py-3">
+          <div className="text-xs text-muted-foreground mb-2">
+            <span className="font-medium">{MOIS_LABELS[previewMois - 1]} {previewAnnee}</span>
+            {' → '}Position <strong>{preview[0].position}</strong> du cycle
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {preview.map(({ date, statuts }) => (
+              <div key={date} className="rounded border bg-background px-3 py-2 text-xs">
+                <div className="font-medium mb-1">
+                  Samedi {new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {statuts.map(({ formateur, statut }) => (
+                    <span key={formateur.id} className="flex items-center gap-1">
+                      <span className="text-muted-foreground">{formateur.nom.split(' ')[0]}</span>
+                      <StatutBadge statut={statut} />
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Helpers partagés ─────────────────────────────────────────
 
 // Encode une affectation pool_mixed comme "{salleId}|{statut}" ou juste "Distance"/"Repos"
@@ -68,6 +241,8 @@ function decodeValue(value: string): { statut: StatutFixe; salleId: string | nul
 function StandardView({
   salles, groupes, formateurs, planning, saving,
   onStatutChange, getSamedi,
+  rotationConfig, cycleReferences, previewAnnee, previewMois,
+  onRotationStatut, onAutoRotation, onAncrageSave,
 }: {
   salles: Salle[]
   groupes: Groupe[]
@@ -76,7 +251,23 @@ function StandardView({
   saving: string | null
   onStatutChange: (formateurId: string, jour: JourSemaine, statut: StatutFixe) => void
   getSamedi: (formateurId: string, salleId: string) => StatutSamedi | undefined
+  rotationConfig: RotationSamediConfig[]
+  cycleReferences: CycleReference[]
+  previewAnnee: number
+  previewMois: number
+  onRotationStatut: (salleId: string, pos: SemaineCycle, formateurId: string, statut: StatutSamedi) => void
+  onAutoRotation: (salleId: string, formateursSalle: Formateur[]) => void
+  onAncrageSave: (salleId: string, date: string, pos: SemaineCycle) => void
 }) {
+  const [expandedSalles, setExpandedSalles] = useState<Set<string>>(new Set())
+  function toggleRotation(salleId: string) {
+    setExpandedSalles(prev => {
+      const next = new Set(prev)
+      next.has(salleId) ? next.delete(salleId) : next.add(salleId)
+      return next
+    })
+  }
+
   function getStatut(formateurId: string, jour: JourSemaine): StatutFixe | undefined {
     return planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)?.statut
   }
@@ -112,9 +303,20 @@ function StandardView({
 
         return (
           <div key={salle.id} className="rounded-lg border bg-card">
-            <div className="border-b px-4 py-3">
-              <h2 className="font-semibold">{salle.nom}</h2>
-              {groupe && <p className="text-xs text-muted-foreground">{groupe.nom}</p>}
+            <div className="border-b px-4 py-3 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold">{salle.nom}</h2>
+                {groupe && <p className="text-xs text-muted-foreground">{groupe.nom}</p>}
+              </div>
+              <Button
+                size="sm" variant="outline"
+                className={`h-7 text-xs gap-1.5 ${expandedSalles.has(salle.id) ? 'bg-muted' : ''}`}
+                onClick={() => toggleRotation(salle.id)}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Rotation Samedi
+                {expandedSalles.has(salle.id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </Button>
             </div>
 
             <div className="overflow-x-auto">
@@ -242,6 +444,21 @@ function StandardView({
               <span className="flex items-center gap-1"><span className="bg-amber-100 text-amber-600 px-1 rounded font-mono text-[9px]">S M</span> 1 créneau pris</span>
               <span className="flex items-center gap-1"><span className="bg-red-100 text-red-600 px-1 rounded font-mono text-[9px]">S✓</span> Salle complète</span>
             </div>
+
+            {/* Panneau Rotation Samedi dépliable */}
+            {expandedSalles.has(salle.id) && (
+              <RotationSallePanel
+                salle={salle}
+                formateursSalle={formateursSalle}
+                rotationConfig={rotationConfig}
+                cycleRef={cycleReferences.find(c => c.salle_id === salle.id)}
+                previewAnnee={previewAnnee}
+                previewMois={previewMois}
+                onStatutChange={onRotationStatut}
+                onAutoRotation={onAutoRotation}
+                onAncrageSave={onAncrageSave}
+              />
+            )}
           </div>
         )
       })}
@@ -477,9 +694,11 @@ function PoolMixedView({
 
 // ── Composant principal ───────────────────────────────────────
 
-export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, activeScenario, rotationConfig, cycleReferences }: Props) {
+export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, activeScenario, rotationConfig: initRotation, cycleReferences: initCycleRefs }: Props) {
   const [planning, setPlanning] = useState<PlanningFixe[]>(planningFixe)
   const [saving, setSaving] = useState<string | null>(null)
+  const [rotationCfg, setRotationCfg] = useState<RotationSamediConfig[]>(initRotation)
+  const [cycleRefs, setCycleRefs] = useState<CycleReference[]>(initCycleRefs)
   const now = new Date()
   const [selectedMois, setSelectedMois] = useState(now.getMonth() + 1)
   const [selectedAnnee, setSelectedAnnee] = useState(now.getFullYear())
@@ -488,7 +707,67 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
   const isPoolMixed = activeScenario?.config && 'type' in activeScenario.config && activeScenario.config.type === 'pool_mixed'
 
   function getSamedi(formateurId: string, salleId: string): StatutSamedi | undefined {
-    return getSamediStatut(formateurId, salleId, selectedAnnee, selectedMois, rotationConfig, cycleReferences)
+    return getSamediStatut(formateurId, salleId, selectedAnnee, selectedMois, rotationCfg, cycleRefs)
+  }
+
+  // ── Handlers Rotation Samedi ──────────────────────────────
+  async function handleRotationStatut(salleId: string, pos: SemaineCycle, formateurId: string, statut: StatutSamedi) {
+    const existing = rotationCfg.find(
+      c => c.salle_id === salleId && c.semaine_cycle === pos && c.formateur_id === formateurId
+    )
+    let error
+    if (existing?.id && !existing.id.startsWith('tmp-')) {
+      ;({ error } = await supabase.from('rotation_samedi_config').update({ statut }).eq('id', existing.id))
+    } else {
+      ;({ error } = await supabase.from('rotation_samedi_config')
+        .insert({ salle_id: salleId, semaine_cycle: pos, formateur_id: formateurId, statut, groupe_id: null }))
+    }
+    if (error) { toast.error('Erreur lors de la sauvegarde'); return }
+    setRotationCfg(prev => [
+      ...prev.filter(c => !(c.salle_id === salleId && c.semaine_cycle === pos && c.formateur_id === formateurId)),
+      { id: existing?.id ?? `tmp-${crypto.randomUUID()}`, salle_id: salleId, groupe_id: null, semaine_cycle: pos, formateur_id: formateurId, statut },
+    ])
+    toast.success('Mis à jour')
+  }
+
+  async function handleAutoRotation(salleId: string, formateursSalle: Formateur[]) {
+    const mois1 = formateursSalle.map(f => ({
+      formateur_id: f.id,
+      statut: (rotationCfg.find(c => c.salle_id === salleId && c.semaine_cycle === 1 && c.formateur_id === f.id)?.statut ?? 'Repos') as StatutSamedi,
+    }))
+    const mois2 = mois1.map(e => ({ formateur_id: e.formateur_id, statut: ROTATION_SUIVANTE[e.statut] }))
+    const mois3 = mois2.map(e => ({ formateur_id: e.formateur_id, statut: ROTATION_SUIVANTE[e.statut] }))
+    await supabase.from('rotation_samedi_config').delete().eq('salle_id', salleId).in('semaine_cycle', [2, 3])
+    const rows = [
+      ...mois2.map(e => ({ salle_id: salleId, groupe_id: null, semaine_cycle: 2 as SemaineCycle, formateur_id: e.formateur_id, statut: e.statut })),
+      ...mois3.map(e => ({ salle_id: salleId, groupe_id: null, semaine_cycle: 3 as SemaineCycle, formateur_id: e.formateur_id, statut: e.statut })),
+    ]
+    const { error } = await supabase.from('rotation_samedi_config').insert(rows)
+    if (error) { toast.error('Erreur lors de la génération'); return }
+    setRotationCfg(prev => [
+      ...prev.filter(c => !(c.salle_id === salleId && (c.semaine_cycle === 2 || c.semaine_cycle === 3))),
+      ...rows.map(r => ({ ...r, id: `tmp-${crypto.randomUUID()}` })),
+    ])
+    toast.success('Mois 2 et 3 générés automatiquement')
+  }
+
+  async function handleAncrageSave(salleId: string, dateAncrage: string, moisCycleAncrage: SemaineCycle) {
+    const existing = cycleRefs.find(c => c.salle_id === salleId)
+    let error
+    if (existing?.id && !existing.id.startsWith('tmp-')) {
+      ;({ error } = await supabase.from('cycle_reference')
+        .update({ date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage })
+        .eq('id', existing.id))
+    } else {
+      ;({ error } = await supabase.from('cycle_reference')
+        .insert({ salle_id: salleId, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage, groupe_id: null }))
+    }
+    if (error) { toast.error("Erreur lors de la sauvegarde de l'ancrage"); return }
+    setCycleRefs(prev => [
+      ...prev.filter(c => c.salle_id !== salleId),
+      { id: existing?.id ?? `tmp-${crypto.randomUUID()}`, salle_id: salleId, groupe_id: null, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage },
+    ])
+    toast.success('Ancrage mis à jour')
   }
 
   // Sauvegarde standard (Scénario A/B) — salle implicite via groupe
@@ -610,6 +889,13 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           saving={saving}
           onStatutChange={handleStatutChange}
           getSamedi={getSamedi}
+          rotationConfig={rotationCfg}
+          cycleReferences={cycleRefs}
+          previewAnnee={selectedAnnee}
+          previewMois={selectedMois}
+          onRotationStatut={handleRotationStatut}
+          onAutoRotation={handleAutoRotation}
+          onAncrageSave={handleAncrageSave}
         />
       )}
     </div>
