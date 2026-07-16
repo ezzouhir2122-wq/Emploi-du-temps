@@ -350,14 +350,18 @@ function StandardView({
     return planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)?.groupe_formation_id ?? null
   }
 
-  // Groupes disponibles : exclure ceux déjà pris par un autre formateur sur le même (jour + statut)
-  function getGroupesDisponibles(formateurId: string, jour: JourSemaine, statut: StatutFixe): Groupe[] {
+  // Groupes disponibles : filtrés par pôle de la salle + exclusion des créneaux déjà pris
+  function getGroupesDisponibles(formateurId: string, jour: JourSemaine, statut: StatutFixe, sallePoleId: string | null): Groupe[] {
     const prisIds = new Set(
       planning
         .filter(p => p.formateur_id !== formateurId && p.jour_semaine === jour && p.statut === statut && p.groupe_formation_id)
         .map(p => p.groupe_formation_id!)
     )
-    return groupesFormation.filter(g => !prisIds.has(g.id))
+    return groupesFormation.filter(g =>
+      !prisIds.has(g.id) &&
+      // Montrer : groupes du pôle de la salle OU groupes sans pôle (partagés entre tous)
+      (!sallePoleId || !g.pole_id || g.pole_id === sallePoleId)
+    )
   }
 
   function getStatutsDisponibles(formateurId: string, jour: JourSemaine, formateursSalle: Formateur[]): StatutFixe[] {
@@ -488,7 +492,7 @@ function StandardView({
                           const groupeId = getGroupeFormation(formateur.id, jour)
                           const groupeNom = groupesFormation.find(g => g.id === groupeId)?.nom
                           const needsGroupe = statut === 'Matin' || statut === 'Après-midi' || statut === 'Distance'
-                          const groupesDispo = needsGroupe ? getGroupesDisponibles(formateur.id, jour, statut) : []
+                          const groupesDispo = needsGroupe ? getGroupesDisponibles(formateur.id, jour, statut, salle.pole_id) : []
 
                           return (
                             <td key={jour} className={`px-1 py-1 text-center ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
@@ -557,7 +561,11 @@ function StandardView({
                                       <SelectItem key={g.id} value={g.id} className="text-xs font-medium">{g.nom}</SelectItem>
                                     ))}
                                     {groupesDispo.length === 0 && (
-                                      <div className="px-3 py-2 text-xs text-muted-foreground italic">Tous les groupes sont pris</div>
+                                      <div className="px-3 py-2 text-xs text-muted-foreground italic">
+                                        {salle.pole_id
+                                          ? 'Aucun groupe assigné à ce pôle — configurez dans Paramètres → Pôles'
+                                          : 'Tous les groupes sont pris'}
+                                      </div>
                                     )}
                                   </SelectContent>
                                 </Select>
