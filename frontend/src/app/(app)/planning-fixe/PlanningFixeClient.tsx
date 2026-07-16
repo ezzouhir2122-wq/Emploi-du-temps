@@ -74,7 +74,10 @@ function StandardView({
     <>
       {salles.map(salle => {
         const groupe = groupes.find(g => g.salle_id === salle.id)
-        const formateursSalle = formateurs.filter(f => f.groupe_id === groupe?.id)
+        // Fallback : si aucun groupe lié à la salle, afficher par pole_id
+        const formateursSalle = groupe
+          ? formateurs.filter(f => f.groupe_id === groupe.id)
+          : formateurs.filter(f => salle.pole_id && f.pole_id === salle.pole_id)
         const salleLabel = salle.nom.replace('Salle ', 'S')
 
         return (
