@@ -32,6 +32,18 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe }
     return planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)?.statut
   }
 
+  // Retourne les statuts disponibles pour un formateur dans une salle/jour donnés.
+  // Matin et Après-midi ne peuvent être attribués qu'à UN SEUL formateur physique par salle/jour.
+  function getStatutsDisponibles(formateurId: string, jour: JourSemaine, formateursSalle: Formateur[]): StatutFixe[] {
+    const statutsPris = new Set<StatutFixe>()
+    for (const f of formateursSalle) {
+      if (f.id === formateurId) continue
+      const s = getStatut(f.id, jour)
+      if (s === 'Matin' || s === 'Après-midi') statutsPris.add(s)
+    }
+    return STATUTS_FIXES.filter(s => !statutsPris.has(s as StatutFixe)) as StatutFixe[]
+  }
+
   async function handleStatutChange(formateurId: string, jour: JourSemaine, statut: StatutFixe) {
     const key = `${formateurId}-${jour}`
     setSaving(key)
@@ -111,6 +123,7 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe }
                       {JOURS_SEMAINE.map(jour => {
                         const statut = getStatut(formateur.id, jour)
                         const key = `${formateur.id}-${jour}`
+                        const disponibles = getStatutsDisponibles(formateur.id, jour, formateursSalle)
                         return (
                           <td key={jour} className="px-3 py-2 text-center">
                             <Select
@@ -126,7 +139,7 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe }
                                 </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
-                                {STATUTS_FIXES.map(s => (
+                                {disponibles.map(s => (
                                   <SelectItem key={s} value={s}>
                                     <StatutBadge statut={s} />
                                   </SelectItem>
