@@ -69,6 +69,7 @@ export interface PlanningFixe {
   formateur_id: string
   jour_semaine: JourSemaine
   statut: StatutFixe
+  salle_id: string | null   // utilisé uniquement en Scénario C (pool_mixed)
   formateur?: Formateur
 }
 
