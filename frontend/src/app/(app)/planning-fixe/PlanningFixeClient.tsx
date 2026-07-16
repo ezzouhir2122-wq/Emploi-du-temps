@@ -396,30 +396,30 @@ function StandardView({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-2 text-left font-medium text-muted-foreground w-44">Formateur</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground w-32">Formateur</th>
                     {JOURS_SEMAINE.map(jour => {
                       const matinPris = formateursSalle.some(f => getStatut(f.id, jour) === 'Matin')
                       const pmPris    = formateursSalle.some(f => getStatut(f.id, jour) === 'Après-midi')
                       const complete  = matinPris && pmPris
                       const isSamedi  = jour === 'Samedi'
                       return (
-                        <th key={jour} className={`px-2 py-2 text-center font-medium text-muted-foreground min-w-[140px] ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40' : ''}`}>
-                          <div className={isSamedi ? 'text-emerald-700 font-semibold' : ''}>{jour}</div>
-                          <div className="flex justify-center mt-1">
+                        <th key={jour} className={`px-1 py-1.5 text-center font-medium text-muted-foreground min-w-[100px] ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40' : ''}`}>
+                          <div className={`text-xs font-medium ${isSamedi ? 'text-emerald-700 font-semibold' : ''}`}>{jour}</div>
+                          <div className="flex justify-center mt-0.5">
                             <span
                               title={`${salle.nom} : ${matinPris ? 'Matin✓' : 'Matin○'} ${pmPris ? 'PM✓' : 'PM○'}`}
-                              className={`text-[9px] font-mono px-1 rounded ${
+                              className={`text-[8px] font-mono px-1 rounded ${
                                 complete ? 'bg-red-100 text-red-600'
                                 : (matinPris || pmPris) ? 'bg-amber-100 text-amber-600'
                                 : 'bg-green-100 text-green-600'
                               }`}
                             >
-                              {salleLabel}{complete ? ' ✓' : matinPris ? ' M' : pmPris ? ' PM' : ' ○'}
+                              {salleLabel}{complete ? '✓' : matinPris ? ' M' : pmPris ? ' PM' : ' ○'}
                             </span>
                           </div>
                           {complete && (
-                            <div className="flex items-center justify-center gap-0.5 mt-0.5 text-[9px] text-red-500">
-                              <Info className="h-2.5 w-2.5" /> Salle complète
+                            <div className="flex items-center justify-center gap-0.5 mt-0.5 text-[8px] text-red-500">
+                              <Info className="h-2 w-2" />complet
                             </div>
                           )}
                         </th>
@@ -435,9 +435,11 @@ function StandardView({
 
                     return (
                       <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-2 font-medium">
-                          {formateur.nom}
-                          <SeancesBadge count={seances} />
+                        <td className="px-3 py-1.5 font-medium text-sm leading-tight">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="truncate max-w-[100px]">{formateur.nom}</span>
+                            <SeancesBadge count={seances} />
+                          </div>
                         </td>
                         {JOURS_SEMAINE.map(jour => {
                           const statut      = getStatut(formateur.id, jour)
@@ -447,7 +449,7 @@ function StandardView({
                           // Samedi auto-Repos si Mon-Ven = 5
                           if (isSamedi && samediAuto) {
                             return (
-                              <td key={jour} className="px-2 py-2 text-center border-l-2 border-dashed border-muted-foreground/40 bg-slate-50/60">
+                              <td key={jour} className="px-1 py-1.5 text-center border-l-2 border-dashed border-muted-foreground/40 bg-slate-50/60">
                                 <div className="flex flex-col items-center gap-0.5">
                                   <StatutBadge statut="Repos" />
                                   <span className="text-[9px] text-muted-foreground/60 italic">auto</span>
@@ -464,23 +466,18 @@ function StandardView({
                           const trop = !statut && seances >= MAX_SEANCES
 
                           return (
-                            <td key={jour} className={`px-2 py-2 text-center ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
+                            <td key={jour} className={`px-1 py-1.5 text-center ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
                               <Select
                                 value={statut ?? ''}
                                 onValueChange={val => onStatutChange(formateur.id, jour, val as StatutFixe)}
                                 disabled={saving === key}
                               >
-                                <SelectTrigger className={`h-8 w-[150px] text-xs mx-auto ${trop ? 'border-orange-300' : ''}`}>
+                                {/* Trigger compact : affiche uniquement le badge (la salle est déjà connue) */}
+                                <SelectTrigger className={`h-7 w-[96px] text-xs mx-auto px-2 ${trop ? 'border-orange-300' : ''}`}>
                                   <SelectValue placeholder="—">
                                     {statut
-                                      ? (statut === 'Distance' || statut === 'Repos')
-                                        ? <StatutBadge statut={statut} />
-                                        : <span className="flex items-center gap-1 text-xs">
-                                            <span className="text-muted-foreground font-mono">{salle.nom}</span>
-                                            <span className="text-muted-foreground">·</span>
-                                            <StatutBadge statut={statut} />
-                                          </span>
-                                      : <span className="text-muted-foreground/50">—</span>
+                                      ? <StatutBadge statut={statut} />
+                                      : <span className="text-muted-foreground/40 text-[10px]">—</span>
                                     }
                                   </SelectValue>
                                 </SelectTrigger>
@@ -488,20 +485,19 @@ function StandardView({
                                   {trop && (
                                     <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-orange-600 bg-orange-50 border-b">
                                       <Info className="h-3 w-3 shrink-0" />
-                                      {seances}/{MAX_SEANCES} séances déjà atteint
+                                      {seances}/{MAX_SEANCES} séances atteint
                                     </div>
                                   )}
                                   {salleComplete && physiques.length === 0 && (
                                     <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b">
                                       <Info className="h-3 w-3 shrink-0" />
-                                      {salle.nom} non disponible
+                                      {salleLabel} non disponible
                                     </div>
                                   )}
                                   {physiques.map(s => (
                                     <SelectItem key={s} value={s}>
                                       <span className="flex items-center gap-1.5 text-xs">
-                                        <span className="text-muted-foreground font-mono">{salle.nom}</span>
-                                        <span className="text-muted-foreground">·</span>
+                                        <span className="text-muted-foreground font-mono text-[10px]">{salleLabel}</span>
                                         <StatutBadge statut={s} />
                                       </span>
                                     </SelectItem>
