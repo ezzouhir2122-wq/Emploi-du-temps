@@ -8,9 +8,18 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { CalendarDays, Info } from 'lucide-react'
-import type { Formateur, Groupe, Salle, PlanningFixe, Scenario, JourSemaine, StatutFixe } from '@/types/planning'
+import { CalendarDays, Info, RotateCcw } from 'lucide-react'
+import type {
+  Formateur, Groupe, Salle, PlanningFixe, Scenario,
+  JourSemaine, StatutFixe, RotationSamediConfig, CycleReference, StatutSamedi, SemaineCycle,
+} from '@/types/planning'
 import { JOURS_SEMAINE, STATUTS_FIXES } from '@/types/planning'
+import { getMoisCycle, parseISODate } from '@/lib/rotation'
+
+const MOIS_LABELS = [
+  'Janvier','Février','Mars','Avril','Mai','Juin',
+  'Juillet','Août','Septembre','Octobre','Novembre','Décembre',
+]
 
 interface Props {
   salles: Salle[]
@@ -18,6 +27,26 @@ interface Props {
   formateurs: Formateur[]
   planningFixe: PlanningFixe[]
   activeScenario: Scenario | null
+  rotationConfig: RotationSamediConfig[]
+  cycleReferences: CycleReference[]
+}
+
+// Calcule le statut Samedi d'un formateur pour un mois donné
+function getSamediStatut(
+  formateurId: string,
+  salleId: string,
+  annee: number,
+  mois: number,
+  rotationConfig: RotationSamediConfig[],
+  cycleReferences: CycleReference[]
+): StatutSamedi | undefined {
+  const ref = cycleReferences.find(c => c.salle_id === salleId)
+  if (!ref) return undefined
+  const ancrage = parseISODate(ref.date_ancrage)
+  const pos = getMoisCycle(annee, mois, ancrage, ref.semaine_cycle_ancrage as SemaineCycle)
+  return rotationConfig.find(
+    c => c.salle_id === salleId && c.semaine_cycle === pos && c.formateur_id === formateurId
+  )?.statut
 }
 
 // ── Helpers partagés ─────────────────────────────────────────
@@ -38,7 +67,7 @@ function decodeValue(value: string): { statut: StatutFixe; salleId: string | nul
 
 function StandardView({
   salles, groupes, formateurs, planning, saving,
-  onStatutChange,
+  onStatutChange, getSamedi,
 }: {
   salles: Salle[]
   groupes: Groupe[]
@@ -46,6 +75,7 @@ function StandardView({
   planning: PlanningFixe[]
   saving: string | null
   onStatutChange: (formateurId: string, jour: JourSemaine, statut: StatutFixe) => void
+  getSamedi: (formateurId: string, salleId: string) => StatutSamedi | undefined
 }) {
   function getStatut(formateurId: string, jour: JourSemaine): StatutFixe | undefined {
     return planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)?.statut
@@ -119,73 +149,90 @@ function StandardView({
                         </th>
                       )
                     })}
+                    {/* Colonne Samedi — rotation */}
+                    <th className="px-2 py-2 text-center font-medium text-muted-foreground min-w-[130px] border-l border-dashed border-muted-foreground/30">
+                      <div className="flex items-center justify-center gap-1">
+                        <RotateCcw className="h-3 w-3 text-muted-foreground/60" />
+                        Samedi
+                      </div>
+                      <div className="text-[9px] text-muted-foreground/60 mt-0.5">Rotation mensuelle</div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {formateursSalle.map(formateur => (
-                    <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-2 font-medium">{formateur.nom}</td>
-                      {JOURS_SEMAINE.map(jour => {
-                        const statut     = getStatut(formateur.id, jour)
-                        const key        = `${formateur.id}-${jour}`
-                        const disponibles = getStatutsDisponibles(formateur.id, jour, formateursSalle)
-                        const physiques  = disponibles.filter(s => s === 'Matin' || s === 'Après-midi')
-                        const autres     = disponibles.filter(s => s !== 'Matin' && s !== 'Après-midi')
-                        const salleComplete = formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Matin')
-                                          && formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Après-midi')
-
-                        return (
-                          <td key={jour} className="px-2 py-2 text-center">
-                            <Select
-                              value={statut ?? ''}
-                              onValueChange={val => onStatutChange(formateur.id, jour, val as StatutFixe)}
-                              disabled={saving === key}
-                            >
-                              <SelectTrigger className="h-8 w-[150px] text-xs mx-auto">
-                                <SelectValue placeholder="—">
-                                  {statut
-                                    ? (statut === 'Distance' || statut === 'Repos')
-                                      ? <StatutBadge statut={statut} />
-                                      : <span className="flex items-center gap-1 text-xs">
-                                          <span className="text-muted-foreground font-mono">{salle.nom}</span>
-                                          <span className="text-muted-foreground">·</span>
-                                          <StatutBadge statut={statut} />
-                                        </span>
-                                    : <span className="text-muted-foreground/50">—</span>
-                                  }
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                {salleComplete && physiques.length === 0 && (
-                                  <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b">
-                                    <Info className="h-3 w-3 shrink-0" />
-                                    {salle.nom} non disponible
-                                  </div>
-                                )}
-                                {physiques.map(s => (
-                                  <SelectItem key={s} value={s}>
-                                    <span className="flex items-center gap-1.5 text-xs">
-                                      <span className="text-muted-foreground font-mono">{salle.nom}</span>
-                                      <span className="text-muted-foreground">·</span>
+                  {formateursSalle.map(formateur => {
+                    const samediStatut = getSamedi(formateur.id, salle.id)
+                    return (
+                      <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-2 font-medium">{formateur.nom}</td>
+                        {JOURS_SEMAINE.map(jour => {
+                          const statut     = getStatut(formateur.id, jour)
+                          const key        = `${formateur.id}-${jour}`
+                          const disponibles = getStatutsDisponibles(formateur.id, jour, formateursSalle)
+                          const physiques  = disponibles.filter(s => s === 'Matin' || s === 'Après-midi')
+                          const autres     = disponibles.filter(s => s !== 'Matin' && s !== 'Après-midi')
+                          const salleComplete = formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Matin')
+                                            && formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Après-midi')
+                          return (
+                            <td key={jour} className="px-2 py-2 text-center">
+                              <Select
+                                value={statut ?? ''}
+                                onValueChange={val => onStatutChange(formateur.id, jour, val as StatutFixe)}
+                                disabled={saving === key}
+                              >
+                                <SelectTrigger className="h-8 w-[150px] text-xs mx-auto">
+                                  <SelectValue placeholder="—">
+                                    {statut
+                                      ? (statut === 'Distance' || statut === 'Repos')
+                                        ? <StatutBadge statut={statut} />
+                                        : <span className="flex items-center gap-1 text-xs">
+                                            <span className="text-muted-foreground font-mono">{salle.nom}</span>
+                                            <span className="text-muted-foreground">·</span>
+                                            <StatutBadge statut={statut} />
+                                          </span>
+                                      : <span className="text-muted-foreground/50">—</span>
+                                    }
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {salleComplete && physiques.length === 0 && (
+                                    <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b">
+                                      <Info className="h-3 w-3 shrink-0" />
+                                      {salle.nom} non disponible
+                                    </div>
+                                  )}
+                                  {physiques.map(s => (
+                                    <SelectItem key={s} value={s}>
+                                      <span className="flex items-center gap-1.5 text-xs">
+                                        <span className="text-muted-foreground font-mono">{salle.nom}</span>
+                                        <span className="text-muted-foreground">·</span>
+                                        <StatutBadge statut={s} />
+                                      </span>
+                                    </SelectItem>
+                                  ))}
+                                  {physiques.length > 0 && autres.length > 0 && (
+                                    <div className="h-px bg-border my-1" />
+                                  )}
+                                  {autres.map(s => (
+                                    <SelectItem key={s} value={s}>
                                       <StatutBadge statut={s} />
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                                {physiques.length > 0 && autres.length > 0 && (
-                                  <div className="h-px bg-border my-1" />
-                                )}
-                                {autres.map(s => (
-                                  <SelectItem key={s} value={s}>
-                                    <StatutBadge statut={s} />
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                          )
+                        })}
+                        {/* Cellule Samedi (lecture seule) */}
+                        <td className="px-2 py-2 text-center border-l border-dashed border-muted-foreground/30">
+                          {samediStatut
+                            ? <StatutBadge statut={samediStatut} />
+                            : <span className="text-xs text-muted-foreground/40 italic">Non config.</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -206,13 +253,14 @@ function StandardView({
 
 function PoolMixedView({
   salles, formateurs, planning, saving,
-  onAssign,
+  onAssign, getSamedi,
 }: {
   salles: Salle[]
   formateurs: Formateur[]
   planning: PlanningFixe[]
   saving: string | null
   onAssign: (formateurId: string, jour: JourSemaine, value: string) => void
+  getSamedi: (formateurId: string, salleId: string) => StatutSamedi | undefined
 }) {
   // Séances physiques prises dans une (salle, jour) par d'autres formateurs
   function getSlotsPris(jour: JourSemaine, salleId: string, excludeFormateurId: string): Set<StatutFixe> {
@@ -314,10 +362,27 @@ function PoolMixedView({
                   </th>
                 )
               })}
+              {/* En-tête Samedi rotation */}
+              <th className="px-2 py-2 text-center font-medium text-muted-foreground min-w-[130px] border-l border-dashed border-muted-foreground/30">
+                <div className="flex items-center justify-center gap-1">
+                  <RotateCcw className="h-3 w-3 text-muted-foreground/60" />
+                  Samedi
+                </div>
+                <div className="text-[9px] text-muted-foreground/60 mt-0.5">Rotation mensuelle</div>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {formateurs.map(formateur => (
+            {formateurs.map(formateur => {
+              // Pour PoolMixed : chercher la salle du formateur via son groupe ou son pole_id
+              const salleDuFormateur = salles.find(s => {
+                const hasPole = s.pole_id && formateur.pole_id === s.pole_id
+                return hasPole
+              })
+              const samediStatut = salleDuFormateur
+                ? getSamedi(formateur.id, salleDuFormateur.id)
+                : undefined
+              return (
               <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-2 font-medium text-sm">{formateur.nom}</td>
                 {JOURS_SEMAINE.map(jour => {
@@ -386,8 +451,16 @@ function PoolMixedView({
                     </td>
                   )
                 })}
+                {/* Cellule Samedi (lecture seule) */}
+                <td className="px-2 py-2 text-center border-l border-dashed border-muted-foreground/30">
+                  {samediStatut
+                    ? <StatutBadge statut={samediStatut} />
+                    : <span className="text-xs text-muted-foreground/40 italic">Non config.</span>
+                  }
+                </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -404,12 +477,19 @@ function PoolMixedView({
 
 // ── Composant principal ───────────────────────────────────────
 
-export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, activeScenario }: Props) {
+export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, activeScenario, rotationConfig, cycleReferences }: Props) {
   const [planning, setPlanning] = useState<PlanningFixe[]>(planningFixe)
   const [saving, setSaving] = useState<string | null>(null)
+  const now = new Date()
+  const [selectedMois, setSelectedMois] = useState(now.getMonth() + 1)
+  const [selectedAnnee, setSelectedAnnee] = useState(now.getFullYear())
   const supabase = createClient()
 
   const isPoolMixed = activeScenario?.config && 'type' in activeScenario.config && activeScenario.config.type === 'pool_mixed'
+
+  function getSamedi(formateurId: string, salleId: string): StatutSamedi | undefined {
+    return getSamediStatut(formateurId, salleId, selectedAnnee, selectedMois, rotationConfig, cycleReferences)
+  }
 
   // Sauvegarde standard (Scénario A/B) — salle implicite via groupe
   async function handleStatutChange(formateurId: string, jour: JourSemaine, statut: StatutFixe) {
@@ -458,19 +538,50 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
     setSaving(null)
   }
 
+  const annees = [selectedAnnee - 1, selectedAnnee, selectedAnnee + 1]
+
   return (
     <div className="space-y-6">
       <div>
-        <PageHeader
-          icon={CalendarDays}
-          title="Planning fixe Lundi–Vendredi"
-          subtitle={
-            isPoolMixed
-              ? 'Scénario C actif — Pool mixte : tous les formateurs peuvent être affectés à n\'importe quelle salle.'
-              : 'Planning permanent — les modifications s\'appliquent immédiatement à toutes les semaines.'
-          }
-          badge={isPoolMixed ? 'Pool mixte' : 'Fixe'}
-        />
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <PageHeader
+              icon={CalendarDays}
+              title="Planning fixe Lundi–Vendredi"
+              subtitle={
+                isPoolMixed
+                  ? 'Scénario C actif — Pool mixte : tous les formateurs peuvent être affectés à n\'importe quelle salle.'
+                  : 'Planning permanent — les modifications s\'appliquent immédiatement à toutes les semaines.'
+              }
+              badge={isPoolMixed ? 'Pool mixte' : 'Fixe'}
+            />
+          </div>
+          {/* Sélecteur mois/année pour la colonne Samedi */}
+          <div className="flex items-center gap-2 shrink-0 mt-1">
+            <RotateCcw className="h-4 w-4 text-muted-foreground/60" />
+            <span className="text-xs text-muted-foreground">Samedi :</span>
+            <Select value={String(selectedMois)} onValueChange={v => setSelectedMois(Number(v))}>
+              <SelectTrigger className="h-7 w-[110px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MOIS_LABELS.map((label, i) => (
+                  <SelectItem key={i + 1} value={String(i + 1)} className="text-xs">{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(selectedAnnee)} onValueChange={v => setSelectedAnnee(Number(v))}>
+              <SelectTrigger className="h-7 w-[80px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {annees.map(a => (
+                  <SelectItem key={a} value={String(a)} className="text-xs">{a}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         {activeScenario && (
           <div className={`mt-2 text-xs px-3 py-1.5 rounded inline-flex items-center gap-2 ${
             isPoolMixed ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
@@ -488,6 +599,7 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           planning={planning}
           saving={saving}
           onAssign={handlePoolAssign}
+          getSamedi={getSamedi}
         />
       ) : (
         <StandardView
@@ -497,6 +609,7 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           planning={planning}
           saving={saving}
           onStatutChange={handleStatutChange}
+          getSamedi={getSamedi}
         />
       )}
     </div>
