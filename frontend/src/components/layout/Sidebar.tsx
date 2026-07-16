@@ -11,6 +11,7 @@ import {
   BarChart3,
   Layers,
   Settings,
+  Download,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -22,6 +23,7 @@ const navItems = [
   { href: '/vue-mensuelle',   label: 'Vue mensuelle',   icon: CalendarRange, desc: 'Calendrier' },
   { href: '/suivi-equite',    label: 'Suivi équité',    icon: BarChart3,     desc: 'Compteurs' },
   { href: '/scenarios',       label: 'Scénarios',       icon: Layers,        desc: 'A / B / C' },
+  { href: '/exports',         label: 'Exports',         icon: Download,      desc: 'Excel / CSV / PDF' },
   { href: '/parametres',      label: 'Paramètres',      icon: Settings,      desc: 'Config' },
 ]
 

@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
-import { Settings, Plus, Pencil, Power, Building2, Users, DoorOpen, GraduationCap } from 'lucide-react'
+import { Settings, Plus, Pencil, Power, Building2, Users, DoorOpen, GraduationCap, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Pole, Salle, Groupe, Formateur } from '@/types/planning'
 
@@ -468,7 +468,49 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
   const [groupes, setGroupes] = useState<Groupe[]>(initGroupes)
   const [adding, setAdding] = useState(false)
   const [newGroupe, setNewGroupe] = useState({ nom: '', salle_id: '', pole_id: '' })
+  const [importing, setImporting] = useState(false)
   const supabase = createClient()
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImporting(true)
+    try {
+      let noms: string[] = []
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const XLSX = await import('xlsx')
+        const buf = await file.arrayBuffer()
+        const wb = XLSX.read(buf, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1 }) as string[][]
+        noms = rows.flatMap(row => row).map(v => String(v ?? '').trim()).filter(Boolean)
+      } else {
+        const text = await file.text()
+        noms = text.split(/[\n\r;,]+/).map(s => s.trim()).filter(Boolean)
+      }
+      if (noms.length === 0) { toast.error('Aucun nom trouvé dans le fichier'); return }
+
+      let added = 0
+      for (const nom of noms) {
+        const { data, error } = await supabase
+          .from('groupes')
+          .insert({ nom })
+          .select()
+          .single()
+        if (!error && data) {
+          setGroupes(prev => {
+            if (prev.some(g => g.nom === nom)) return prev
+            return [...prev, data as Groupe].sort((a, b) => a.nom.localeCompare(b.nom))
+          })
+          added++
+        }
+      }
+      toast.success(`${added} groupe(s) importé(s) sur ${noms.length}`)
+    } finally {
+      setImporting(false)
+    }
+  }
 
   async function handleAssignPole(groupeId: string, poleId: string | null) {
     const { error } = await supabase.from('groupes').update({ pole_id: poleId }).eq('id', groupeId)
@@ -492,6 +534,16 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
 
   return (
     <div className="space-y-4">
+      {/* Import button */}
+      <div className="flex items-center gap-2">
+        <label className={`flex items-center gap-2 cursor-pointer rounded-lg border border-dashed border-[#00968C]/50 bg-[#00968C]/5 hover:bg-[#00968C]/10 px-3 py-2 text-sm font-medium text-[#00968C] transition-colors ${importing ? 'opacity-50 pointer-events-none' : ''}`}>
+          <Upload className="h-4 w-4" />
+          {importing ? 'Import en cours…' : 'Importer depuis Excel / CSV'}
+          <input type="file" accept=".xlsx,.xls,.csv,.txt" className="sr-only" onChange={handleImport} disabled={importing} />
+        </label>
+        <span className="text-xs text-muted-foreground">Un nom par ligne (CSV) ou colonne A (Excel)</span>
+      </div>
+
       <div className="rounded-lg border divide-y">
         {groupes.map(groupe => {
           const salle = salles.find(s => s.id === groupe.salle_id)
