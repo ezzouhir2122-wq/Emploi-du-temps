@@ -74,19 +74,27 @@ export function RotationSamediClient({ salles, formateurs, rotationConfig, cycle
     formateurId: string,
     statut: StatutSamedi
   ) {
-    const { error } = await supabase
-      .from('rotation_samedi_config')
-      .upsert(
-        { salle_id: salleId, semaine_cycle: position, formateur_id: formateurId, statut, groupe_id: null },
-        { onConflict: 'salle_id,semaine_cycle,formateur_id' }
-      )
+    const existing = config.find(
+      c => c.salle_id === salleId && c.semaine_cycle === position && c.formateur_id === formateurId
+    )
+    let error
+    if (existing?.id && !existing.id.startsWith('tmp-')) {
+      ;({ error } = await supabase
+        .from('rotation_samedi_config')
+        .update({ statut })
+        .eq('id', existing.id))
+    } else {
+      ;({ error } = await supabase
+        .from('rotation_samedi_config')
+        .insert({ salle_id: salleId, semaine_cycle: position, formateur_id: formateurId, statut, groupe_id: null }))
+    }
     if (error) { toast.error('Erreur lors de la sauvegarde'); return }
 
     setConfig(prev => {
       const filtered = prev.filter(
         c => !(c.salle_id === salleId && c.semaine_cycle === position && c.formateur_id === formateurId)
       )
-      return [...filtered, { id: crypto.randomUUID(), salle_id: salleId, groupe_id: null, semaine_cycle: position, formateur_id: formateurId, statut }]
+      return [...filtered, { id: existing?.id ?? `tmp-${crypto.randomUUID()}`, salle_id: salleId, groupe_id: null, semaine_cycle: position, formateur_id: formateurId, statut }]
     })
     toast.success('Mis à jour')
   }
@@ -99,35 +107,45 @@ export function RotationSamediClient({ salles, formateurs, rotationConfig, cycle
     const mois2 = mois1.map(e => ({ formateur_id: e.formateur_id, statut: ROTATION_SUIVANTE[e.statut] }))
     const mois3 = mois2.map(e => ({ formateur_id: e.formateur_id, statut: ROTATION_SUIVANTE[e.statut] }))
 
+    // Supprimer les entrées existantes mois 2 et 3 pour cette salle, puis réinsérer
+    await supabase
+      .from('rotation_samedi_config')
+      .delete()
+      .eq('salle_id', salleId)
+      .in('semaine_cycle', [2, 3])
+
     const rows = [
       ...mois2.map(e => ({ salle_id: salleId, groupe_id: null, semaine_cycle: 2 as SemaineCycle, formateur_id: e.formateur_id, statut: e.statut })),
       ...mois3.map(e => ({ salle_id: salleId, groupe_id: null, semaine_cycle: 3 as SemaineCycle, formateur_id: e.formateur_id, statut: e.statut })),
     ]
-
-    const { error } = await supabase
-      .from('rotation_samedi_config')
-      .upsert(rows, { onConflict: 'salle_id,semaine_cycle,formateur_id' })
+    const { error } = await supabase.from('rotation_samedi_config').insert(rows)
     if (error) { toast.error('Erreur lors de la génération'); return }
 
     setConfig(prev => {
       const filtered = prev.filter(c => !(c.salle_id === salleId && (c.semaine_cycle === 2 || c.semaine_cycle === 3)))
-      return [...filtered, ...rows.map(r => ({ ...r, id: crypto.randomUUID() }))]
+      return [...filtered, ...rows.map(r => ({ ...r, id: `tmp-${crypto.randomUUID()}` }))]
     })
     toast.success('Mois 2 et 3 générés automatiquement')
   }
 
   async function handleAncrageSave(salleId: string, dateAncrage: string, moisCycleAncrage: SemaineCycle) {
-    const { error } = await supabase
-      .from('cycle_reference')
-      .upsert(
-        { salle_id: salleId, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage, groupe_id: null },
-        { onConflict: 'salle_id' }
-      )
-    if (error) { toast.error('Erreur lors de la sauvegarde de l\'ancrage'); return }
+    const existing = cycleRefs.find(c => c.salle_id === salleId)
+    let error
+    if (existing?.id && !existing.id.startsWith('tmp-')) {
+      ;({ error } = await supabase
+        .from('cycle_reference')
+        .update({ date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage })
+        .eq('id', existing.id))
+    } else {
+      ;({ error } = await supabase
+        .from('cycle_reference')
+        .insert({ salle_id: salleId, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage, groupe_id: null }))
+    }
+    if (error) { toast.error("Erreur lors de la sauvegarde de l'ancrage"); return }
 
     setCycleRefs(prev => {
       const filtered = prev.filter(c => c.salle_id !== salleId)
-      return [...filtered, { id: crypto.randomUUID(), salle_id: salleId, groupe_id: null, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage }]
+      return [...filtered, { id: existing?.id ?? `tmp-${crypto.randomUUID()}`, salle_id: salleId, groupe_id: null, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage }]
     })
     toast.success('Ancrage mis à jour')
   }
