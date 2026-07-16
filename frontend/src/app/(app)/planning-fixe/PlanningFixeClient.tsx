@@ -35,6 +35,39 @@ const ROTATION_SUIVANTE: Record<StatutSamedi, StatutSamedi> = {
 // Statuts qui comptent comme une séance travaillée
 const STATUTS_TRAVAIL: StatutFixe[] = ['Matin', 'Après-midi', 'Distance']
 const MAX_SEANCES = 5
+const JOURS_MON_VEN: JourSemaine[] = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
+// 6 jours × (Matin + Après-midi) = 12 créneaux physiques max par salle par semaine
+const MAX_CRENEAUX_SALLE = 12
+
+// ── Bannière taux d'occupation salle ─────────────────────────
+
+function OccupationBanner({ filled }: { filled: number }) {
+  const pct = Math.round(filled / MAX_CRENEAUX_SALLE * 100)
+  const color = pct === 100
+    ? { bar: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' }
+    : pct >= 75
+    ? { bar: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' }
+    : { bar: 'bg-red-400', text: 'text-red-700', bg: 'bg-red-50 border-red-200' }
+
+  return (
+    <div className={`px-4 py-2.5 border-b ${color.bg} border flex items-center gap-4`}>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-xs font-semibold text-muted-foreground">Occupation salle</span>
+        <span className={`text-xs font-bold ${color.text}`}>{pct}%</span>
+        <span className="text-xs text-muted-foreground">({filled}/{MAX_CRENEAUX_SALLE} créneaux)</span>
+      </div>
+      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden min-w-[80px]">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${color.bar}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {pct === 100 && (
+        <span className="text-xs font-medium text-emerald-700 shrink-0">✓ Salle 100% occupée</span>
+      )}
+    </div>
+  )
+}
 
 interface Props {
   salles: Salle[]
@@ -287,8 +320,24 @@ function StandardView({
     return planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)?.statut
   }
 
+  // Séances Lundi-Vendredi uniquement (hors Samedi)
+  function countSeancesMonVen(formateurId: string): number {
+    return JOURS_MON_VEN.filter(j => STATUTS_TRAVAIL.includes(getStatut(formateurId, j) as StatutFixe)).length
+  }
+
+  // Séances totales Lundi-Samedi
   function countSeances(formateurId: string): number {
     return JOURS_SEMAINE.filter(j => STATUTS_TRAVAIL.includes(getStatut(formateurId, j) as StatutFixe)).length
+  }
+
+  // Taux d'occupation : créneaux physiques (Matin + PM) saisis / 12
+  function getOccupationSalle(formateursSalle: Formateur[]): number {
+    let filled = 0
+    for (const jour of JOURS_SEMAINE) {
+      if (formateursSalle.some(f => getStatut(f.id, jour) === 'Matin')) filled++
+      if (formateursSalle.some(f => getStatut(f.id, jour) === 'Après-midi')) filled++
+    }
+    return filled
   }
 
   function getStatutsDisponibles(formateurId: string, jour: JourSemaine, formateursSalle: Formateur[]): StatutFixe[] {
@@ -320,6 +369,7 @@ function StandardView({
           : formateurs.filter(f => salle.pole_id && f.pole_id === salle.pole_id)
         const salleLabel = salle.nom.replace('Salle ', 'S')
         const expanded = expandedSalles.has(salle.id)
+        const occupationFilled = getOccupationSalle(formateursSalle)
 
         return (
           <div key={salle.id} className="rounded-lg border bg-card">
@@ -338,6 +388,9 @@ function StandardView({
                 {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               </Button>
             </div>
+
+            {/* Bannière taux d'occupation */}
+            <OccupationBanner filled={occupationFilled} />
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -376,7 +429,10 @@ function StandardView({
                 </thead>
                 <tbody className="divide-y">
                   {formateursSalle.map(formateur => {
-                    const seances = countSeances(formateur.id)
+                    const monVenCount = countSeancesMonVen(formateur.id)
+                    const seances     = countSeances(formateur.id)
+                    const samediAuto  = monVenCount >= MAX_SEANCES
+
                     return (
                       <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-2 font-medium">
@@ -386,14 +442,25 @@ function StandardView({
                         {JOURS_SEMAINE.map(jour => {
                           const statut      = getStatut(formateur.id, jour)
                           const key         = `${formateur.id}-${jour}`
+                          const isSamedi    = jour === 'Samedi'
+
+                          // Samedi auto-Repos si Mon-Ven = 5
+                          if (isSamedi && samediAuto) {
+                            return (
+                              <td key={jour} className="px-2 py-2 text-center border-l-2 border-dashed border-muted-foreground/40 bg-slate-50/60">
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <StatutBadge statut="Repos" />
+                                  <span className="text-[9px] text-muted-foreground/60 italic">auto</span>
+                                </div>
+                              </td>
+                            )
+                          }
+
                           const disponibles = getStatutsDisponibles(formateur.id, jour, formateursSalle)
                           const physiques   = disponibles.filter(s => s === 'Matin' || s === 'Après-midi')
                           const autres      = disponibles.filter(s => s !== 'Matin' && s !== 'Après-midi')
-                          const isSamedi    = jour === 'Samedi'
                           const salleComplete = formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Matin')
                                             && formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Après-midi')
-
-                          // Alerte si ajout de cette séance dépasse 5
                           const trop = !statut && seances >= MAX_SEANCES
 
                           return (
@@ -717,14 +784,43 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
         { onConflict: 'formateur_id,jour_semaine' }
       )
 
-    if (error) { toast.error('Erreur lors de la sauvegarde') } else {
-      setPlanning(prev => [
-        ...prev.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === jour)),
-        { id: existing?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: jour, statut, salle_id: null },
-      ])
-      toast.success('Statut mis à jour')
-    }
+    if (error) { toast.error('Erreur lors de la sauvegarde'); setSaving(null); return }
+
+    const newEntry: PlanningFixe = { id: existing?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: jour, statut, salle_id: null }
+    const updatedPlanning = [
+      ...planning.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === jour)),
+      newEntry,
+    ]
+    setPlanning(updatedPlanning)
+    toast.success('Statut mis à jour')
     setSaving(null)
+
+    // Auto-Repos Samedi si Mon-Ven atteint 5 séances
+    if (jour !== 'Samedi') {
+      const monVenCount = JOURS_MON_VEN.filter(j =>
+        STATUTS_TRAVAIL.includes(
+          updatedPlanning.find(p => p.formateur_id === formateurId && p.jour_semaine === j)?.statut as StatutFixe
+        )
+      ).length
+
+      if (monVenCount >= MAX_SEANCES) {
+        const samediEntry = updatedPlanning.find(p => p.formateur_id === formateurId && p.jour_semaine === 'Samedi')
+        if (!samediEntry || samediEntry.statut !== 'Repos') {
+          const { error: errSam } = await supabase
+            .from('planning_fixe')
+            .upsert(
+              { formateur_id: formateurId, jour_semaine: 'Samedi', statut: 'Repos' },
+              { onConflict: 'formateur_id,jour_semaine' }
+            )
+          if (!errSam) {
+            setPlanning(prev => [
+              ...prev.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === 'Samedi')),
+              { id: samediEntry?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: 'Samedi', statut: 'Repos', salle_id: null },
+            ])
+          }
+        }
+      }
+    }
   }
 
   async function handlePoolAssign(formateurId: string, jour: JourSemaine, value: string) {
