@@ -1,12 +1,12 @@
 // ============================================================
-// lib/rotation.ts — Logique pure du cycle de 3 semaines
+// lib/rotation.ts — Logique pure du cycle mensuel de 3 mois
 //
 // RÈGLE MÉTIER : Le cycle ne se réinitialise JAMAIS.
-// Il est calculé par rapport à une date d'ancrage unique (date_ancrage)
-// correspondant à un Samedi de référence dont on connaît la semaine du cycle.
+// Cycle 3 mois perpétuel : chaque mois tous les Samedis ont la même affectation.
+// Rotation : Matin → Après-midi le mois suivant → Repos → Matin...
 //
-// Formule : semaineCycle(S) = ((ancrage - 1 + ΔSemaines) % 3) + 1
-// où ΔSemaines = nombre de semaines entre date_ancrage et S (peut être négatif)
+// L'ancrage est un mois de référence (seuls année+mois de date_ancrage sont utilisés).
+// Formule : moisCycle(M) = ((ancrage - 1 + ΔMois) % 3) + 1
 // ============================================================
 
 import type { SemaineCycle } from '@/types/planning'
@@ -14,11 +14,27 @@ import type { SemaineCycle } from '@/types/planning'
 const MS_PAR_SEMAINE = 7 * 24 * 60 * 60 * 1000
 
 /**
- * Calcule la semaine du cycle (1, 2 ou 3) pour un Samedi donné,
- * à partir d'une date d'ancrage et de sa semaine de cycle connue.
+ * Calcule la position dans le cycle mensuel (1, 2 ou 3) pour un mois donné,
+ * à partir d'un mois d'ancrage et de sa position connue dans le cycle.
  *
- * Fonctionne dans les deux sens : passé et futur.
  * Ne dépend d'aucune logique annuelle — le cycle est perpétuel.
+ */
+export function getMoisCycle(
+  annee: number,
+  mois: number,
+  dateAncrage: Date,
+  moisCycleAncrage: SemaineCycle
+): SemaineCycle {
+  const ancrageAnnee = dateAncrage.getUTCFullYear()
+  const ancrageMois = dateAncrage.getUTCMonth() + 1
+  const deltaMois = (annee - ancrageAnnee) * 12 + (mois - ancrageMois)
+  const position = ((moisCycleAncrage - 1 + deltaMois) % 3 + 3) % 3
+  return (position + 1) as SemaineCycle
+}
+
+/**
+ * @deprecated Utilisez getMoisCycle — conservé pour compatibilité vue-mensuelle.
+ * Calcule la semaine du cycle (1, 2 ou 3) pour un Samedi donné.
  */
 export function getSemaineCycle(
   dateSamedi: Date,

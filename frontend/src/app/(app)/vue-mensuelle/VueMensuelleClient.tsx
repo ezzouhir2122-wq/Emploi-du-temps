@@ -5,7 +5,7 @@ import { StatutBadge } from '@/components/planning/StatutBadge'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
 import { CalendarRange } from 'lucide-react'
 import {
-  getSemaineCycle,
+  getMoisCycle,
   getJoursDuMois,
   parseISODate,
   toISODateString,
@@ -61,16 +61,15 @@ export function VueMensuelleClient({
     const dayNum = date.getDay() // 0=Dim,1=Lun...6=Sam
 
     if (dayNum === 6) {
-      // Samedi
+      // Samedi — tous les Samedis d'un même mois ont la même position de cycle
       if (!groupeId) return 'Repos'
       const ref = cycleReferences.find(c => c.groupe_id === groupeId)
       if (!ref) return null
 
       const ancrage = parseISODate(ref.date_ancrage)
-      const samediUTC = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-      const semaine = getSemaineCycle(samediUTC, ancrage, ref.semaine_cycle_ancrage)
+      const position = getMoisCycle(date.getFullYear(), date.getMonth() + 1, ancrage, ref.semaine_cycle_ancrage)
       const cfg = rotationConfig.find(
-        c => c.groupe_id === groupeId && c.semaine_cycle === semaine && c.formateur_id === formateurId
+        c => c.groupe_id === groupeId && c.semaine_cycle === position && c.formateur_id === formateurId
       )
       return cfg?.statut ?? 'Repos'
     }

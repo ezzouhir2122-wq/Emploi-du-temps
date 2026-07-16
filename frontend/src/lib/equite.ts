@@ -1,5 +1,5 @@
 import {
-  getSemaineCycle,
+  getMoisCycle,
   getJoursDuMois,
   parseISODate,
   dayNumberToLabel,
@@ -51,10 +51,9 @@ export function calculerEquite(params: EquiteParams): CompteurFormateur[] {
           if (!ref) continue
 
           const ancrage = parseISODate(ref.date_ancrage)
-          const samediUTC = new Date(Date.UTC(jour.getFullYear(), jour.getMonth(), jour.getDate()))
-          const semaine = getSemaineCycle(samediUTC, ancrage, ref.semaine_cycle_ancrage)
+          const position = getMoisCycle(jour.getFullYear(), jour.getMonth() + 1, ancrage, ref.semaine_cycle_ancrage)
           const cfg = rotationConfig.find(
-            c => c.groupe_id === groupeId && c.semaine_cycle === semaine && c.formateur_id === formateur.id
+            c => c.groupe_id === groupeId && c.semaine_cycle === position && c.formateur_id === formateur.id
           )
           const statut = cfg?.statut ?? 'Repos'
           const cpt = compteurs.get(formateur.id)!

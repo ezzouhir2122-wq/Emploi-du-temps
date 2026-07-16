@@ -4,7 +4,7 @@ import type {
   RotationSamediConfig, CycleReference, StatutFixe, StatutSamedi, JourSemaine,
 } from '@/types/planning'
 import { JOURS_SEMAINE } from '@/types/planning'
-import { getSemaineCycle, getJoursDuMois, parseISODate, toISODateString, dayNumberToLabel } from './rotation'
+import { getMoisCycle, getJoursDuMois, parseISODate, toISODateString, dayNumberToLabel } from './rotation'
 
 interface ExportParams {
   annee: number
@@ -37,10 +37,9 @@ function getStatutPourJour(
     const ref = cycleReferences.find(c => c.groupe_id === groupeId)
     if (!ref) return '—'
     const ancrage = parseISODate(ref.date_ancrage)
-    const samediUTC = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-    const semaine = getSemaineCycle(samediUTC, ancrage, ref.semaine_cycle_ancrage)
+    const position = getMoisCycle(date.getFullYear(), date.getMonth() + 1, ancrage, ref.semaine_cycle_ancrage)
     return rotationConfig.find(
-      c => c.groupe_id === groupeId && c.semaine_cycle === semaine && c.formateur_id === formateurId
+      c => c.groupe_id === groupeId && c.semaine_cycle === position && c.formateur_id === formateurId
     )?.statut ?? 'Repos'
   }
 
