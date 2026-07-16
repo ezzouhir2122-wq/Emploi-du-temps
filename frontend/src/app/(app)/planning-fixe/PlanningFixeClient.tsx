@@ -52,13 +52,22 @@ function StandardView({
   }
 
   function getStatutsDisponibles(formateurId: string, jour: JourSemaine, formateursSalle: Formateur[]): StatutFixe[] {
-    const statutsPris = new Set<StatutFixe>()
+    const indisponibles = new Set<StatutFixe>()
+
+    // Matin/Après-midi : déjà pris par un autre formateur de la même salle ce jour
     for (const f of formateursSalle) {
       if (f.id === formateurId) continue
       const s = getStatut(f.id, jour)
-      if (s === 'Matin' || s === 'Après-midi') statutsPris.add(s)
+      if (s === 'Matin' || s === 'Après-midi') indisponibles.add(s)
     }
-    return STATUTS_FIXES.filter(s => !statutsPris.has(s as StatutFixe)) as StatutFixe[]
+
+    // Distance : max 1 fois par semaine pour ce formateur
+    const dejaDistance = JOURS_SEMAINE
+      .filter(j => j !== jour)
+      .some(j => getStatut(formateurId, j) === 'Distance')
+    if (dejaDistance) indisponibles.add('Distance')
+
+    return STATUTS_FIXES.filter(s => !indisponibles.has(s as StatutFixe)) as StatutFixe[]
   }
 
   return (
@@ -266,6 +275,11 @@ function PoolMixedView({
                     }
                   }
 
+                  // Distance : max 1 fois par semaine pour ce formateur
+                  const dejaDistance = JOURS_SEMAINE
+                    .filter(j => j !== jour)
+                    .some(j => planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === j)?.statut === 'Distance')
+
                   return (
                     <td key={jour} className="px-2 py-2 text-center">
                       <Select
@@ -301,7 +315,9 @@ function PoolMixedView({
                           {optionsPhysiques.length > 0 && (
                             <div className="h-px bg-border my-1" />
                           )}
-                          <SelectItem value="Distance"><StatutBadge statut="Distance" /></SelectItem>
+                          {!dejaDistance && (
+                            <SelectItem value="Distance"><StatutBadge statut="Distance" /></SelectItem>
+                          )}
                           <SelectItem value="Repos"><StatutBadge statut="Repos" /></SelectItem>
                         </SelectContent>
                       </Select>
