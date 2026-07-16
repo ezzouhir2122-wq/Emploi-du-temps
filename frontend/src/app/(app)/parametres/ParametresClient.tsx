@@ -216,7 +216,7 @@ function FormateursTab({
       {/* Filtre par pôle */}
       <div className="flex items-center gap-2">
         <Label className="text-xs text-muted-foreground shrink-0">Filtrer par pôle :</Label>
-        <Select value={filterPole} onValueChange={setFilterPole}>
+        <Select value={filterPole} onValueChange={v => setFilterPole(v ?? 'all')}>
           <SelectTrigger className="h-8 w-48 text-xs">
             <SelectValue>{filterPole === 'all' ? 'Tous les pôles' : poles.find(p => p.id === filterPole)?.nom}</SelectValue>
           </SelectTrigger>
@@ -333,7 +333,7 @@ function FormateursTab({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Pôle</Label>
-            <Select value={newFormateur.pole_id} onValueChange={v => setNewFormateur(p => ({ ...p, pole_id: v, groupe_id: '' }))}>
+            <Select value={newFormateur.pole_id} onValueChange={v => setNewFormateur(p => ({ ...p, pole_id: v ?? '', groupe_id: '' }))}>
               <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choisir un pôle" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Aucun pôle</SelectItem>
@@ -343,7 +343,7 @@ function FormateursTab({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Groupe de formation</Label>
-            <Select value={newFormateur.groupe_id} onValueChange={v => setNewFormateur(p => ({ ...p, groupe_id: v }))}>
+            <Select value={newFormateur.groupe_id} onValueChange={v => setNewFormateur(p => ({ ...p, groupe_id: v ?? '' }))}>
               <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choisir un groupe" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Aucun groupe</SelectItem>
@@ -439,7 +439,7 @@ function SallesTab({ initSalles, poles, groupes }: { initSalles: Salle[]; poles:
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Pôle</Label>
-              <Select value={newSalle.pole_id} onValueChange={v => setNewSalle(p => ({ ...p, pole_id: v }))}>
+              <Select value={newSalle.pole_id} onValueChange={v => setNewSalle(p => ({ ...p, pole_id: v ?? '' }))}>
                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choisir un pôle" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Aucun pôle</SelectItem>
@@ -541,7 +541,7 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Salle attribuée</Label>
-              <Select value={newGroupe.salle_id} onValueChange={v => setNewGroupe(p => ({ ...p, salle_id: v }))}>
+              <Select value={newGroupe.salle_id} onValueChange={v => setNewGroupe(p => ({ ...p, salle_id: v ?? '' }))}>
                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choisir une salle" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Aucune salle</SelectItem>
@@ -551,7 +551,7 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Pôle</Label>
-              <Select value={newGroupe.pole_id} onValueChange={v => setNewGroupe(p => ({ ...p, pole_id: v }))}>
+              <Select value={newGroupe.pole_id} onValueChange={v => setNewGroupe(p => ({ ...p, pole_id: v ?? '' }))}>
                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choisir un pôle" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Aucun pôle</SelectItem>
