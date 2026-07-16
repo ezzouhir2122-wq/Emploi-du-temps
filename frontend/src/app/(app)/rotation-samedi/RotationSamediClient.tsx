@@ -18,12 +18,12 @@ import {
 } from '@/components/ui/select'
 import { toast } from 'sonner'
 import type {
-  Groupe, Formateur, RotationSamediConfig, CycleReference,
+  Salle, Formateur, RotationSamediConfig, CycleReference,
   SemaineCycle, StatutSamedi,
 } from '@/types/planning'
 
 interface Props {
-  groupes: Groupe[]
+  salles: Salle[]
   formateurs: Formateur[]
   rotationConfig: RotationSamediConfig[]
   cycleReferences: CycleReference[]
@@ -32,14 +32,18 @@ interface Props {
 const STATUTS_SAMEDI: StatutSamedi[] = ['Matin', 'Après-midi', 'Repos']
 const POSITIONS_CYCLE: SemaineCycle[] = [1, 2, 3]
 
-// Rotation mensuelle : Matin→Après-midi, Après-midi→Repos, Repos→Matin
 const ROTATION_SUIVANTE: Record<StatutSamedi, StatutSamedi> = {
   'Matin':       'Après-midi',
   'Après-midi':  'Repos',
   'Repos':       'Matin',
 }
 
-export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycleReferences }: Props) {
+const MOIS_LABELS = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+]
+
+export function RotationSamediClient({ salles, formateurs, rotationConfig, cycleReferences }: Props) {
   const [config, setConfig] = useState<RotationSamediConfig[]>(rotationConfig)
   const [cycleRefs, setCycleRefs] = useState<CycleReference[]>(cycleReferences)
 
@@ -49,18 +53,23 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
 
   const supabase = createClient()
 
-  function getCycleRef(groupeId: string): CycleReference | undefined {
-    return cycleRefs.find(c => c.groupe_id === groupeId)
+  // ── Formateurs par salle : pole_id fallback si pas de groupe lié ──
+  function getFormateursSalle(salle: Salle): Formateur[] {
+    return formateurs.filter(f => salle.pole_id && f.pole_id === salle.pole_id)
   }
 
-  function getConfig(groupeId: string, position: SemaineCycle, formateurId: string) {
+  function getCycleRef(salleId: string): CycleReference | undefined {
+    return cycleRefs.find(c => c.salle_id === salleId)
+  }
+
+  function getConfig(salleId: string, position: SemaineCycle, formateurId: string) {
     return config.find(
-      c => c.groupe_id === groupeId && c.semaine_cycle === position && c.formateur_id === formateurId
+      c => c.salle_id === salleId && c.semaine_cycle === position && c.formateur_id === formateurId
     )
   }
 
   async function handleStatutChange(
-    groupeId: string,
+    salleId: string,
     position: SemaineCycle,
     formateurId: string,
     statut: StatutSamedi
@@ -68,88 +77,78 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
     const { error } = await supabase
       .from('rotation_samedi_config')
       .upsert(
-        { groupe_id: groupeId, semaine_cycle: position, formateur_id: formateurId, statut },
-        { onConflict: 'groupe_id,semaine_cycle,formateur_id' }
+        { salle_id: salleId, semaine_cycle: position, formateur_id: formateurId, statut, groupe_id: null },
+        { onConflict: 'salle_id,semaine_cycle,formateur_id' }
       )
-
     if (error) { toast.error('Erreur lors de la sauvegarde'); return }
 
     setConfig(prev => {
       const filtered = prev.filter(
-        c => !(c.groupe_id === groupeId && c.semaine_cycle === position && c.formateur_id === formateurId)
+        c => !(c.salle_id === salleId && c.semaine_cycle === position && c.formateur_id === formateurId)
       )
-      return [...filtered, { id: crypto.randomUUID(), groupe_id: groupeId, semaine_cycle: position, formateur_id: formateurId, statut }]
+      return [...filtered, { id: crypto.randomUUID(), salle_id: salleId, groupe_id: null, semaine_cycle: position, formateur_id: formateurId, statut }]
     })
     toast.success('Mis à jour')
   }
 
-  // Génère automatiquement les mois 2 et 3 à partir du mois 1
-  async function handleAutoRotation(groupeId: string, formateursGroupe: Formateur[]) {
-    const mois1 = formateursGroupe.map(f => ({
+  async function handleAutoRotation(salleId: string, formateursSalle: Formateur[]) {
+    const mois1 = formateursSalle.map(f => ({
       formateur_id: f.id,
-      statut: (getConfig(groupeId, 1, f.id)?.statut ?? 'Repos') as StatutSamedi,
+      statut: (getConfig(salleId, 1, f.id)?.statut ?? 'Repos') as StatutSamedi,
     }))
-
     const mois2 = mois1.map(e => ({ formateur_id: e.formateur_id, statut: ROTATION_SUIVANTE[e.statut] }))
     const mois3 = mois2.map(e => ({ formateur_id: e.formateur_id, statut: ROTATION_SUIVANTE[e.statut] }))
 
     const rows = [
-      ...mois2.map(e => ({ groupe_id: groupeId, semaine_cycle: 2 as SemaineCycle, formateur_id: e.formateur_id, statut: e.statut })),
-      ...mois3.map(e => ({ groupe_id: groupeId, semaine_cycle: 3 as SemaineCycle, formateur_id: e.formateur_id, statut: e.statut })),
+      ...mois2.map(e => ({ salle_id: salleId, groupe_id: null, semaine_cycle: 2 as SemaineCycle, formateur_id: e.formateur_id, statut: e.statut })),
+      ...mois3.map(e => ({ salle_id: salleId, groupe_id: null, semaine_cycle: 3 as SemaineCycle, formateur_id: e.formateur_id, statut: e.statut })),
     ]
 
     const { error } = await supabase
       .from('rotation_samedi_config')
-      .upsert(rows, { onConflict: 'groupe_id,semaine_cycle,formateur_id' })
-
+      .upsert(rows, { onConflict: 'salle_id,semaine_cycle,formateur_id' })
     if (error) { toast.error('Erreur lors de la génération'); return }
 
     setConfig(prev => {
-      const filtered = prev.filter(c => !(c.groupe_id === groupeId && (c.semaine_cycle === 2 || c.semaine_cycle === 3)))
+      const filtered = prev.filter(c => !(c.salle_id === salleId && (c.semaine_cycle === 2 || c.semaine_cycle === 3)))
       return [...filtered, ...rows.map(r => ({ ...r, id: crypto.randomUUID() }))]
     })
     toast.success('Mois 2 et 3 générés automatiquement')
   }
 
-  async function handleAncrageSave(groupeId: string, dateAncrage: string, moisCycleAncrage: SemaineCycle) {
+  async function handleAncrageSave(salleId: string, dateAncrage: string, moisCycleAncrage: SemaineCycle) {
     const { error } = await supabase
       .from('cycle_reference')
       .upsert(
-        { groupe_id: groupeId, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage },
-        { onConflict: 'groupe_id' }
+        { salle_id: salleId, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage, groupe_id: null },
+        { onConflict: 'salle_id' }
       )
-
     if (error) { toast.error('Erreur lors de la sauvegarde de l\'ancrage'); return }
 
     setCycleRefs(prev => {
-      const filtered = prev.filter(c => c.groupe_id !== groupeId)
-      return [...filtered, { id: crypto.randomUUID(), groupe_id: groupeId, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage }]
+      const filtered = prev.filter(c => c.salle_id !== salleId)
+      return [...filtered, { id: crypto.randomUUID(), salle_id: salleId, groupe_id: null, date_ancrage: dateAncrage, semaine_cycle_ancrage: moisCycleAncrage }]
     })
     toast.success('Ancrage mis à jour')
   }
 
-  // Tous les Samedis du mois partagent la même position de cycle
-  function getPreviewSamedis(groupeId: string) {
-    const ref = getCycleRef(groupeId)
+  function getPreviewSamedis(salleId: string) {
+    const ref = getCycleRef(salleId)
     if (!ref) return []
-
     const ancrage = parseISODate(ref.date_ancrage)
     const position = getMoisCycle(previewAnnee, previewMois, ancrage, ref.semaine_cycle_ancrage)
     const samedis = getSamedisDuMois(previewAnnee, previewMois)
-    const formateursGroupe = formateurs.filter(f => f.groupe_id === groupeId)
-
-    const statuts = formateursGroupe.map(f => ({
+    const salle = salles.find(s => s.id === salleId)!
+    const formateursSalle = getFormateursSalle(salle)
+    const statuts = formateursSalle.map(f => ({
       formateur: f,
-      statut: (getConfig(groupeId, position, f.id)?.statut ?? 'Repos') as StatutSamedi,
+      statut: (getConfig(salleId, position, f.id)?.statut ?? 'Repos') as StatutSamedi,
     }))
-
     return samedis.map(samedi => ({ date: toISODateString(samedi), position, statuts }))
   }
 
-  const MOIS_LABELS = [
-    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
-  ]
+  // N'afficher que les salles qui ont des formateurs (via pole_id)
+  const sallesActives = salles.filter(s => getFormateursSalle(s).length > 0)
 
   return (
     <div className="space-y-8">
@@ -163,20 +162,29 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
         <PageDivider />
       </div>
 
-      {groupes.map(groupe => {
-        const formateursGroupe = formateurs.filter(f => f.groupe_id === groupe.id)
-        const ref = getCycleRef(groupe.id)
+      {sallesActives.length === 0 && (
+        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          Aucune salle avec des formateurs affectés.<br />
+          Configurez les pôles dans <strong>Paramètres → Pôles</strong>.
+        </div>
+      )}
+
+      {sallesActives.map(salle => {
+        const formateursSalle = getFormateursSalle(salle)
+        const ref = getCycleRef(salle.id)
 
         return (
-          <div key={groupe.id} className="rounded-lg border bg-card space-y-0">
+          <div key={salle.id} className="rounded-lg border bg-card space-y-0">
+            {/* Entête salle */}
             <div className="border-b px-4 py-3">
-              <h2 className="font-semibold">{groupe.nom}</h2>
+              <h2 className="font-semibold">{salle.nom}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{formateursSalle.length} formateur(s)</p>
             </div>
 
             {/* Ancrage */}
             <AncragEditor
               ref_={ref}
-              onSave={(date, pos) => handleAncrageSave(groupe.id, date, pos)}
+              onSave={(date, pos) => handleAncrageSave(salle.id, date, pos)}
             />
 
             {/* Configuration du cycle mensuel */}
@@ -189,7 +197,7 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
                   size="sm"
                   variant="outline"
                   className="h-7 text-xs gap-1.5"
-                  onClick={() => handleAutoRotation(groupe.id, formateursGroupe)}
+                  onClick={() => handleAutoRotation(salle.id, formateursSalle)}
                   title="Génère Mois 2 et 3 automatiquement depuis Mois 1"
                 >
                   <Wand2 className="h-3.5 w-3.5" />
@@ -213,17 +221,17 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {formateursGroupe.map(formateur => (
+                  {formateursSalle.map(formateur => (
                     <tr key={formateur.id} className="hover:bg-muted/30">
                       <td className="py-2 px-3 font-medium">{formateur.nom}</td>
                       {POSITIONS_CYCLE.map(pos => {
-                        const current = getConfig(groupe.id, pos, formateur.id)
+                        const current = getConfig(salle.id, pos, formateur.id)
                         return (
                           <td key={pos} className="py-2 px-3 text-center">
                             <Select
                               value={current?.statut ?? 'Repos'}
                               onValueChange={val =>
-                                handleStatutChange(groupe.id, pos, formateur.id, val as StatutSamedi)
+                                handleStatutChange(salle.id, pos, formateur.id, val as StatutSamedi)
                               }
                             >
                               <SelectTrigger className="h-8 w-32 text-xs mx-auto">
@@ -254,10 +262,7 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
                 Prévisualisation — Samedis du mois
               </p>
               <div className="flex items-center gap-2 mb-4">
-                <Select
-                  value={String(previewMois)}
-                  onValueChange={v => setPreviewMois(Number(v))}
-                >
+                <Select value={String(previewMois)} onValueChange={v => setPreviewMois(Number(v))}>
                   <SelectTrigger className="h-8 w-36 text-xs">
                     <SelectValue>{MOIS_LABELS[previewMois - 1]}</SelectValue>
                   </SelectTrigger>
@@ -272,8 +277,7 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
                   value={previewAnnee}
                   onChange={e => setPreviewAnnee(Number(e.target.value))}
                   className="h-8 w-24 text-xs"
-                  min={2020}
-                  max={2040}
+                  min={2020} max={2040}
                 />
               </div>
 
@@ -282,17 +286,17 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
                   Configurez le mois d&apos;ancrage ci-dessus pour activer la prévisualisation.
                 </p>
               ) : (() => {
-                const preview = getPreviewSamedis(groupe.id)
+                const preview = getPreviewSamedis(salle.id)
                 if (preview.length === 0) return <p className="text-sm text-muted-foreground italic">Aucun Samedi ce mois.</p>
-                const { position, statuts } = preview[0]
+                const { position } = preview[0]
                 return (
                   <div className="space-y-2">
                     <div className="text-xs text-muted-foreground bg-muted/40 rounded px-3 py-1.5 inline-flex items-center gap-2">
-                      Mois {MOIS_LABELS[previewMois - 1]} {previewAnnee} →
+                      {MOIS_LABELS[previewMois - 1]} {previewAnnee} →
                       <span className="font-semibold text-foreground">Position {position} du cycle</span>
-                      — affectation identique pour tous les Samedis
+                      — tous les Samedis ont la même affectation
                     </div>
-                    {preview.map(({ date, statuts: s }) => (
+                    {preview.map(({ date, statuts }) => (
                       <div key={date} className="rounded border p-3">
                         <span className="font-medium text-sm">
                           Samedi {new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {
@@ -300,7 +304,7 @@ export function RotationSamediClient({ groupes, formateurs, rotationConfig, cycl
                           })}
                         </span>
                         <div className="flex flex-wrap gap-3 mt-2">
-                          {s.map(({ formateur, statut }) => (
+                          {statuts.map(({ formateur, statut }) => (
                             <div key={formateur.id} className="flex items-center gap-1.5">
                               <span className="text-xs font-medium">{formateur.nom}</span>
                               <StatutBadge statut={statut} />
@@ -359,9 +363,7 @@ function AncragEditor({
           </Select>
         </div>
         <Button
-          size="sm"
-          variant="outline"
-          className="h-8 text-xs"
+          size="sm" variant="outline" className="h-8 text-xs"
           onClick={() => onSave(date, pos)}
           disabled={!date}
         >

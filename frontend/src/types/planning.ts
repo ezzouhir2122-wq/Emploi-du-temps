@@ -75,7 +75,8 @@ export interface PlanningFixe {
 
 export interface RotationSamediConfig {
   id: string
-  groupe_id: string
+  groupe_id: string | null
+  salle_id: string | null
   semaine_cycle: SemaineCycle
   formateur_id: string
   statut: StatutSamedi
@@ -84,7 +85,8 @@ export interface RotationSamediConfig {
 
 export interface CycleReference {
   id: string
-  groupe_id: string
+  groupe_id: string | null
+  salle_id: string | null
   date_ancrage: string  // ISO date string YYYY-MM-DD
   semaine_cycle_ancrage: SemaineCycle
 }
