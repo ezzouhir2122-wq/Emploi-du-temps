@@ -54,7 +54,7 @@ export function ScenariosClient({ scenarios: initialScenarios }: Props) {
     const { error: err1 } = await supabase
       .from('scenarios')
       .update({ actif: false })
-      .neq('id', 'NONE')  // Update all
+      .not('id', 'is', null)
 
     // Activer le scénario choisi
     const { error: err2 } = await supabase
