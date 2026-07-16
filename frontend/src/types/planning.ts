@@ -69,7 +69,8 @@ export interface PlanningFixe {
   formateur_id: string
   jour_semaine: JourSemaine
   statut: StatutFixe
-  salle_id: string | null   // utilisé uniquement en Scénario C (pool_mixed)
+  salle_id: string | null           // utilisé uniquement en Scénario C (pool_mixed)
+  groupe_formation_id: string | null // groupe enseigné lors de cette séance
   formateur?: Formateur
 }
 

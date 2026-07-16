@@ -79,6 +79,9 @@ interface Props {
   cycleReferences: CycleReference[]
 }
 
+// Groupes de formation (non techniques : salle_id IS NULL)
+function isGroupeFormation(g: Groupe) { return !g.salle_id }
+
 // ── Composants Rotation Samedi (intégrés) ────────────────────
 
 function AncragEditor({
@@ -288,7 +291,7 @@ function SeancesBadge({ count }: { count: number }) {
 
 function StandardView({
   salles, groupes, formateurs, planning, saving,
-  onStatutChange,
+  onStatutChange, onGroupeChange, groupesFormation,
   rotationConfig, cycleReferences, previewAnnee, previewMois,
   onRotationStatut, onAutoRotation, onAncrageSave, onApplyRotation,
 }: {
@@ -298,6 +301,8 @@ function StandardView({
   planning: PlanningFixe[]
   saving: string | null
   onStatutChange: (formateurId: string, jour: JourSemaine, statut: StatutFixe) => void
+  onGroupeChange: (formateurId: string, jour: JourSemaine, groupeId: string | null) => void
+  groupesFormation: Groupe[]
   rotationConfig: RotationSamediConfig[]
   cycleReferences: CycleReference[]
   previewAnnee: number
@@ -338,6 +343,21 @@ function StandardView({
       if (formateursSalle.some(f => getStatut(f.id, jour) === 'Après-midi')) filled++
     }
     return filled
+  }
+
+  // Groupe actuellement affecté à cette séance
+  function getGroupeFormation(formateurId: string, jour: JourSemaine): string | null {
+    return planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)?.groupe_formation_id ?? null
+  }
+
+  // Groupes disponibles : exclure ceux déjà pris par un autre formateur sur le même (jour + statut)
+  function getGroupesDisponibles(formateurId: string, jour: JourSemaine, statut: StatutFixe): Groupe[] {
+    const prisIds = new Set(
+      planning
+        .filter(p => p.formateur_id !== formateurId && p.jour_semaine === jour && p.statut === statut && p.groupe_formation_id)
+        .map(p => p.groupe_formation_id!)
+    )
+    return groupesFormation.filter(g => !prisIds.has(g.id))
   }
 
   function getStatutsDisponibles(formateurId: string, jour: JourSemaine, formateursSalle: Formateur[]): StatutFixe[] {
@@ -465,14 +485,19 @@ function StandardView({
                                             && formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Après-midi')
                           const trop = !statut && seances >= MAX_SEANCES
 
+                          const groupeId = getGroupeFormation(formateur.id, jour)
+                          const groupeNom = groupesFormation.find(g => g.id === groupeId)?.nom
+                          const needsGroupe = statut === 'Matin' || statut === 'Après-midi' || statut === 'Distance'
+                          const groupesDispo = needsGroupe ? getGroupesDisponibles(formateur.id, jour, statut) : []
+
                           return (
-                            <td key={jour} className={`px-1 py-1.5 text-center ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
+                            <td key={jour} className={`px-1 py-1 text-center ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
+                              {/* Statut */}
                               <Select
                                 value={statut ?? ''}
                                 onValueChange={val => onStatutChange(formateur.id, jour, val as StatutFixe)}
                                 disabled={saving === key}
                               >
-                                {/* Trigger compact : affiche uniquement le badge (la salle est déjà connue) */}
                                 <SelectTrigger className={`h-7 w-[96px] text-xs mx-auto px-2 ${trop ? 'border-orange-300' : ''}`}>
                                   <SelectValue placeholder="—">
                                     {statut
@@ -510,6 +535,33 @@ function StandardView({
                                   ))}
                                 </SelectContent>
                               </Select>
+
+                              {/* Groupe de formation */}
+                              {needsGroupe && (
+                                <Select
+                                  value={groupeId ?? '__none__'}
+                                  onValueChange={val => onGroupeChange(formateur.id, jour, val === '__none__' ? null : val)}
+                                >
+                                  <SelectTrigger className={`h-6 w-[96px] text-[10px] mx-auto mt-0.5 px-1.5 border-dashed ${groupeId ? 'border-solid border-primary/40 bg-primary/5 font-medium' : 'text-muted-foreground/50'}`}>
+                                    <SelectValue>
+                                      {groupeNom
+                                        ? <span className="text-[10px] font-semibold text-primary/80">{groupeNom}</span>
+                                        : <span className="text-[9px] text-muted-foreground/40 italic">Groupe…</span>
+                                      }
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__" className="text-xs text-muted-foreground italic">— Aucun —</SelectItem>
+                                    {groupesDispo.length > 0 && <div className="h-px bg-border my-1" />}
+                                    {groupesDispo.map(g => (
+                                      <SelectItem key={g.id} value={g.id} className="text-xs font-medium">{g.nom}</SelectItem>
+                                    ))}
+                                    {groupesDispo.length === 0 && (
+                                      <div className="px-3 py-2 text-xs text-muted-foreground italic">Tous les groupes sont pris</div>
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              )}
                             </td>
                           )
                         })}
@@ -756,6 +808,7 @@ function PoolMixedView({
 // ── Composant principal ───────────────────────────────────────
 
 export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, activeScenario, rotationConfig: initRotation, cycleReferences: initCycleRefs }: Props) {
+  const groupesFormation = groupes.filter(isGroupeFormation)
   const [planning, setPlanning] = useState<PlanningFixe[]>(planningFixe)
   const [saving, setSaving] = useState<string | null>(null)
   const [rotationCfg, setRotationCfg] = useState<RotationSamediConfig[]>(initRotation)
@@ -776,13 +829,13 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
     const { error } = await supabase
       .from('planning_fixe')
       .upsert(
-        { formateur_id: formateurId, jour_semaine: jour, statut },
+        { formateur_id: formateurId, jour_semaine: jour, statut, groupe_formation_id: null },
         { onConflict: 'formateur_id,jour_semaine' }
       )
 
     if (error) { toast.error('Erreur lors de la sauvegarde'); setSaving(null); return }
 
-    const newEntry: PlanningFixe = { id: existing?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: jour, statut, salle_id: null }
+    const newEntry: PlanningFixe = { id: existing?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: jour, statut, salle_id: null, groupe_formation_id: null }
     const updatedPlanning = [
       ...planning.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === jour)),
       newEntry,
@@ -811,7 +864,7 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           if (!errSam) {
             setPlanning(prev => [
               ...prev.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === 'Samedi')),
-              { id: samediEntry?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: 'Samedi', statut: 'Repos', salle_id: null },
+              { id: samediEntry?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: 'Samedi', statut: 'Repos', salle_id: null, groupe_formation_id: null },
             ])
           }
         }
@@ -835,11 +888,29 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
     if (error) { toast.error('Erreur lors de la sauvegarde') } else {
       setPlanning(prev => [
         ...prev.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === jour)),
-        { id: existing?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: jour, statut, salle_id: salleId },
+        { id: existing?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: jour, statut, salle_id: salleId, groupe_formation_id: null },
       ])
       toast.success('Statut mis à jour')
     }
     setSaving(null)
+  }
+
+  async function handleGroupeChange(formateurId: string, jour: JourSemaine, groupeId: string | null) {
+    const existing = planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)
+    if (!existing) return // statut doit être défini avant d'affecter un groupe
+
+    const { error } = await supabase
+      .from('planning_fixe')
+      .update({ groupe_formation_id: groupeId })
+      .eq('id', existing.id)
+
+    if (error) { toast.error('Erreur lors de la sauvegarde du groupe'); return }
+
+    setPlanning(prev => prev.map(p =>
+      p.formateur_id === formateurId && p.jour_semaine === jour
+        ? { ...p, groupe_formation_id: groupeId }
+        : p
+    ))
   }
 
   // ── Handlers Rotation Samedi ──────────────────────────────
@@ -980,6 +1051,8 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           planning={planning}
           saving={saving}
           onStatutChange={handleStatutChange}
+          onGroupeChange={handleGroupeChange}
+          groupesFormation={groupesFormation}
           rotationConfig={rotationCfg}
           cycleReferences={cycleRefs}
           previewAnnee={selectedAnnee}
