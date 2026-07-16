@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import { RotationSamediClient } from './RotationSamediClient'
 import type { Groupe, Formateur, RotationSamediConfig, CycleReference } from '@/types/planning'

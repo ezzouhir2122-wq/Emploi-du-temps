@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import { PlanningFixeClient } from './PlanningFixeClient'
 import type { Formateur, Groupe, Salle, PlanningFixe } from '@/types/planning'

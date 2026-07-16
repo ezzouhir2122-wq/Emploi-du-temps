@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import { VueMensuelleClient } from './VueMensuelleClient'
 import type { Formateur, Groupe, Salle, PlanningFixe, RotationSamediConfig, CycleReference } from '@/types/planning'

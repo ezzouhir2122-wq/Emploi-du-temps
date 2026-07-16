@@ -25,27 +25,43 @@ export const DUREE_SEANCE_H = 5
 
 // ---- Entités ----
 
+export interface Pole {
+  id: string
+  nom: string
+  code: string | null
+  description: string | null
+  actif: boolean
+  created_at: string
+}
+
 export interface Salle {
   id: string
   nom: string
+  pole_id: string | null
   created_at: string
+  pole?: Pole
 }
 
 export interface Groupe {
   id: string
   nom: string
   salle_id: string | null
+  pole_id: string | null
   created_at: string
   salle?: Salle
+  pole?: Pole
 }
 
 export interface Formateur {
   id: string
   nom: string
+  matricule: string | null
   groupe_id: string | null
+  pole_id: string | null
   actif: boolean
   created_at: string
   groupe?: Groupe
+  pole?: Pole
 }
 
 export interface PlanningFixe {

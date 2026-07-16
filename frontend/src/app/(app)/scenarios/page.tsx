@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import { ScenariosClient } from './ScenariosClient'
 import type { Scenario } from '@/types/planning'

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import { SuiviEquiteClient } from './SuiviEquiteClient'
 import type { Formateur, Groupe, PlanningFixe, RotationSamediConfig, CycleReference } from '@/types/planning'
