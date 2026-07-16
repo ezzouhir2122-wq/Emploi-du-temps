@@ -69,6 +69,53 @@ function CheckList({
   )
 }
 
+// ── Répartition formateurs par salle ─────────────────────────
+
+function RepartitionPanel({
+  selectedFormateurs, selectedSalles, allFormateurs, allSalles, repartition, onChange,
+}: {
+  selectedFormateurs: string[]
+  selectedSalles: string[]
+  allFormateurs: Formateur[]
+  allSalles: Salle[]
+  repartition: Record<string, string>
+  onChange: (r: Record<string, string>) => void
+}) {
+  if (selectedFormateurs.length === 0 || selectedSalles.length === 0) return null
+  const sallesChoisies = allSalles.filter(s => selectedSalles.includes(s.id))
+  const formateursChoisis = allFormateurs.filter(f => selectedFormateurs.includes(f.id))
+
+  return (
+    <div className="space-y-2 border rounded-lg p-3 bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-800/30">
+      <p className="text-xs font-semibold text-amber-800 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+        <DoorOpen className="h-3.5 w-3.5" /> Répartition des formateurs par salle
+      </p>
+      <p className="text-[11px] text-muted-foreground">Chaque formateur doit être affecté à une salle pour apparaître dans le planning.</p>
+      <div className="space-y-1.5">
+        {formateursChoisis.map(f => (
+          <div key={f.id} className="flex items-center gap-2">
+            <span className="text-xs w-40 truncate font-medium">{f.nom}</span>
+            <Select
+              value={repartition[f.id] ?? ''}
+              onValueChange={v => onChange({ ...repartition, [f.id]: v ?? '' })}
+            >
+              <SelectTrigger className="h-7 flex-1 text-xs">
+                <SelectValue placeholder="— Choisir une salle —" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">— Non affecté —</SelectItem>
+                {sallesChoisies.map(s => (
+                  <SelectItem key={s.id} value={s.id}>{s.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Onglet Pôles ─────────────────────────────────────────────
 
 function PolesTab({
@@ -93,6 +140,9 @@ function PolesTab({
   const [editSalles, setEditSalles] = useState<string[]>([])
   const [editFormateurs, setEditFormateurs] = useState<string[]>([])
   const [editGroupes, setEditGroupes] = useState<string[]>([])
+  // répartition : formateurId → salleId
+  const [newRepartition, setNewRepartition] = useState<Record<string, string>>({})
+  const [editRepartition, setEditRepartition] = useState<Record<string, string>>({})
 
   const supabase = createClient()
 
@@ -116,23 +166,66 @@ function PolesTab({
     return formateurs.filter(f => !f.pole_id || f.pole_id === currentPoleId)
   }
 
-  async function applyAssignments(poleId: string, selSalles: string[], selFormateurs: string[], selGroupes: string[], prevPoleId?: string) {
+  // Retourne ou crée un groupe technique lié à une salle (pour la chaîne formateur→groupe→salle)
+  async function getOrCreateGroupeSalle(salleId: string, poleId: string): Promise<string> {
+    const existing = groupes.find(g => g.salle_id === salleId)
+    if (existing) {
+      if (existing.pole_id !== poleId) {
+        await supabase.from('groupes').update({ pole_id: poleId }).eq('id', existing.id)
+        setGroupes(prev => prev.map(g => g.id === existing.id ? { ...g, pole_id: poleId } : g))
+      }
+      return existing.id
+    }
+    const salleName = salles.find(s => s.id === salleId)?.nom ?? salleId
+    const { data, error } = await supabase
+      .from('groupes')
+      .insert({ nom: `Grp-${salleName}`, salle_id: salleId, pole_id: poleId })
+      .select().single()
+    if (error || !data) return ''
+    const newGroupe = data as Groupe
+    setGroupes(prev => [...prev, newGroupe].sort((a, b) => a.nom.localeCompare(b.nom)))
+    return newGroupe.id
+  }
+
+  async function applyAssignments(
+    poleId: string,
+    selSalles: string[],
+    selFormateurs: string[],
+    selGroupes: string[],
+    repartition: Record<string, string>
+  ) {
     // Salles : affecter les sélectionnées, désaffecter les anciennes de ce pôle non sélectionnées
-    const prevSalles = salles.filter(s => s.pole_id === (prevPoleId ?? poleId)).map(s => s.id)
+    const prevSalles = salles.filter(s => s.pole_id === poleId).map(s => s.id)
     const toUnassignSalles = prevSalles.filter(id => !selSalles.includes(id))
     if (selSalles.length) await supabase.from('salles').update({ pole_id: poleId }).in('id', selSalles)
     if (toUnassignSalles.length) await supabase.from('salles').update({ pole_id: null }).in('id', toUnassignSalles)
 
-    const prevFormateurs = formateurs.filter(f => f.pole_id === (prevPoleId ?? poleId)).map(f => f.id)
+    const prevFormateurs = formateurs.filter(f => f.pole_id === poleId).map(f => f.id)
     const toUnassignF = prevFormateurs.filter(id => !selFormateurs.includes(id))
     if (selFormateurs.length) await supabase.from('formateurs').update({ pole_id: poleId }).in('id', selFormateurs)
-    if (toUnassignF.length) await supabase.from('formateurs').update({ pole_id: null }).in('id', toUnassignF)
+    if (toUnassignF.length) await supabase.from('formateurs').update({ pole_id: null, groupe_id: null }).in('id', toUnassignF)
 
-    // Groupes (partagés) : affecter sélectionnés, désaffecter ceux du pôle non sélectionnés
-    const prevGroupes = groupes.filter(g => g.pole_id === (prevPoleId ?? poleId)).map(g => g.id)
+    // Groupes (partagés)
+    const prevGroupes = groupes.filter(g => g.pole_id === poleId && !g.salle_id).map(g => g.id)
     const toUnassignG = prevGroupes.filter(id => !selGroupes.includes(id))
     if (selGroupes.length) await supabase.from('groupes').update({ pole_id: poleId }).in('id', selGroupes)
     if (toUnassignG.length) await supabase.from('groupes').update({ pole_id: null }).in('id', toUnassignG)
+
+    // Répartition par salle : créer/trouver le groupe technique et lier les formateurs
+    const salleToGroupe: Record<string, string> = {}
+    for (const [fId, salleId] of Object.entries(repartition)) {
+      if (!selFormateurs.includes(fId) || !selSalles.includes(salleId)) continue
+      if (!salleToGroupe[salleId]) {
+        salleToGroupe[salleId] = await getOrCreateGroupeSalle(salleId, poleId)
+      }
+      const groupeId = salleToGroupe[salleId]
+      if (groupeId) {
+        await supabase.from('formateurs').update({ groupe_id: groupeId }).eq('id', fId)
+      }
+    }
+    // Formateurs non répartis → groupe_id null
+    const nonRepartis = selFormateurs.filter(id => !repartition[id])
+    if (nonRepartis.length) await supabase.from('formateurs').update({ groupe_id: null }).in('id', nonRepartis)
 
     // Mise à jour état local
     setSalles(prev => prev.map(s => {
@@ -141,8 +234,9 @@ function PolesTab({
       return s
     }))
     setFormateurs(prev => prev.map(f => {
-      if (selFormateurs.includes(f.id)) return { ...f, pole_id: poleId }
-      if (toUnassignF.includes(f.id)) return { ...f, pole_id: null }
+      const newGroupeId = repartition[f.id] ? salleToGroupe[repartition[f.id]] : null
+      if (selFormateurs.includes(f.id)) return { ...f, pole_id: poleId, groupe_id: newGroupeId ?? f.groupe_id }
+      if (toUnassignF.includes(f.id)) return { ...f, pole_id: null, groupe_id: null }
       return f
     }))
     setGroupes(prev => prev.map(g => {
@@ -161,17 +255,27 @@ function PolesTab({
     if (error) { toast.error('Erreur lors de la création'); return }
     const created = data as Pole
     setPoles(prev => [...prev, created].sort((a, b) => a.nom.localeCompare(b.nom)))
-    await applyAssignments(created.id, newSalles, newFormateurs, newGroupes)
+    await applyAssignments(created.id, newSalles, newFormateurs, newGroupes, newRepartition)
     setNewPole({ nom: '', code: '', description: '' })
-    setNewSalles([]); setNewFormateurs([]); setNewGroupes([])
+    setNewSalles([]); setNewFormateurs([]); setNewGroupes([]); setNewRepartition({})
     toast.success('Pôle créé avec ses affectations')
   }
 
   function openEdit(pole: Pole) {
     setEditingPole(pole)
-    setEditSalles(salles.filter(s => s.pole_id === pole.id).map(s => s.id))
-    setEditFormateurs(formateurs.filter(f => f.pole_id === pole.id).map(f => f.id))
-    setEditGroupes(groupes.filter(g => g.pole_id === pole.id).map(g => g.id))
+    const poleSalles = salles.filter(s => s.pole_id === pole.id).map(s => s.id)
+    const poleFormateurs = formateurs.filter(f => f.pole_id === pole.id)
+    setEditSalles(poleSalles)
+    setEditFormateurs(poleFormateurs.map(f => f.id))
+    setEditGroupes(groupes.filter(g => g.pole_id === pole.id && !g.salle_id).map(g => g.id))
+    // Reconstruire la répartition existante : formateur → salle via groupe
+    const rep: Record<string, string> = {}
+    for (const f of poleFormateurs) {
+      if (!f.groupe_id) continue
+      const g = groupes.find(gr => gr.id === f.groupe_id)
+      if (g?.salle_id && poleSalles.includes(g.salle_id)) rep[f.id] = g.salle_id
+    }
+    setEditRepartition(rep)
   }
 
   async function handleUpdate() {
@@ -182,7 +286,7 @@ function PolesTab({
       .eq('id', editingPole.id)
     if (error) { toast.error('Erreur lors de la mise à jour'); return }
     setPoles(prev => prev.map(p => p.id === editingPole.id ? editingPole : p))
-    await applyAssignments(editingPole.id, editSalles, editFormateurs, editGroupes)
+    await applyAssignments(editingPole.id, editSalles, editFormateurs, editGroupes, editRepartition)
     setEditingPole(null)
     toast.success('Pôle mis à jour')
   }
@@ -285,12 +389,20 @@ function PolesTab({
               }}
             />
             <CheckList
-              label="Groupes (partagés)"
-              items={groupes}
+              label="Groupes de formation (partagés)"
+              items={groupes.filter(g => !g.salle_id)}
               selected={editGroupes}
               onChange={setEditGroupes}
             />
           </div>
+          <RepartitionPanel
+            selectedFormateurs={editFormateurs}
+            selectedSalles={editSalles}
+            allFormateurs={formateurs}
+            allSalles={salles}
+            repartition={editRepartition}
+            onChange={setEditRepartition}
+          />
           <div className="flex gap-2">
             <Button size="sm" onClick={handleUpdate}>Enregistrer</Button>
             <Button size="sm" variant="ghost" onClick={() => setEditingPole(null)}>Annuler</Button>
@@ -333,12 +445,20 @@ function PolesTab({
             takenBy={id => poleOwnerFormateur(id)}
           />
           <CheckList
-            label="Groupes (partagés)"
-            items={groupes}
+            label="Groupes de formation (partagés)"
+            items={groupes.filter(g => !g.salle_id)}
             selected={newGroupes}
             onChange={setNewGroupes}
           />
         </div>
+        <RepartitionPanel
+          selectedFormateurs={newFormateurs}
+          selectedSalles={newSalles}
+          allFormateurs={formateurs}
+          allSalles={salles}
+          repartition={newRepartition}
+          onChange={setNewRepartition}
+        />
         <Button size="sm" onClick={handleAdd} disabled={!newPole.nom.trim()}>
           <Plus className="h-4 w-4 mr-1" /> Créer le pôle
         </Button>
