@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
 import { CalendarRange, ChevronLeft, ChevronRight, FileDown, Loader2, Building2, Users, LayoutDashboard, BarChart3, BookOpen, Layers, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -116,8 +117,9 @@ function PDFPreviewModal({
 
   const ready = PDFViewerComp && PDFDocComp
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgba(0,0,0,0.88)' }}>
+  // Portal → injecté dans document.body pour contourner overflow:hidden du layout
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex flex-col" style={{ background: 'rgba(0,0,0,0.88)' }}>
       {/* Barre du haut */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-[#003D70] text-white shrink-0 shadow-lg">
         <div className="flex items-center gap-3">
@@ -162,7 +164,8 @@ function PDFPreviewModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
