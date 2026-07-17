@@ -164,7 +164,7 @@ const s = StyleSheet.create({
 
   cell: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 48,
     marginLeft: 3,
     borderRadius: 4,
     padding: 5,
@@ -173,14 +173,15 @@ const s = StyleSheet.create({
   cellTypeTag: {
     fontSize: 5.5,
     fontFamily: 'Helvetica-Bold',
-    marginBottom: 2,
+    marginBottom: 1,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
+  cellTime: { fontSize: 7, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
   cellGroupe: { fontSize: 9, fontFamily: 'Helvetica-Bold', marginTop: 1 },
   cellEmpty: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 48,
     marginLeft: 3,
     borderRadius: 4,
     backgroundColor: '#F8FAFC',
@@ -189,7 +190,7 @@ const s = StyleSheet.create({
   },
   cellRepos: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 48,
     marginLeft: 3,
     borderRadius: 4,
     backgroundColor: SLATE_LIGHT,
@@ -398,6 +399,7 @@ export function FormateurPlanningPDF({
                   return (
                     <View key={jour} style={[s.cell, { backgroundColor: slot.bg, borderColor: slot.border }]}>
                       <Text style={[s.cellTypeTag, { color: slot.fg }]}>{slot.label}</Text>
+                      <Text style={[s.cellTime, { color: slot.fg }]}>{slot.time}</Text>
                       {row.groupe_nom
                         ? <Text style={[s.cellGroupe, { color: slot.fg }]}>{row.groupe_nom}</Text>
                         : <Text style={[s.cellGroupe, { color: '#94A3B8', fontFamily: 'Helvetica-Oblique' }]}>—</Text>
