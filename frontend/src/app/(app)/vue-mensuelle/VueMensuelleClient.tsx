@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
 import { CalendarRange, ChevronLeft, ChevronRight, FileDown, Loader2, Building2, Users, LayoutDashboard, BarChart3, BookOpen, Layers, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -267,8 +267,10 @@ export function VueMensuelleClient({
   }
 
   async function openPreview(_viewKey: string, componentName: string, label: string, filename: string) {
-    // 1. Ouvre le modal immédiatement en état "chargement"
-    setPreviewState({ label, filename, blobUrl: null, loading: true, error: null })
+    // 1. Force React à rendre le modal MAINTENANT, avant tout await
+    flushSync(() => {
+      setPreviewState({ label, filename, blobUrl: null, loading: true, error: null })
+    })
     try {
       // 2. Génère le blob PDF (lazy import)
       const [{ pdf }, { createElement }, mod] = await Promise.all([
