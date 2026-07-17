@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { StatutBadge } from '@/components/planning/StatutBadge'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { CalendarDays, Info, RotateCcw, Wand2, ChevronDown, ChevronUp, Settings2, Play } from 'lucide-react'
+import { CalendarDays, Info, RotateCcw, Wand2, ChevronDown, ChevronUp, Settings2, Play, Eye, X } from 'lucide-react'
 import { PDFDownloadButton } from '@/components/pdf/PDFDownloadButton'
 import type {
   Formateur, Groupe, Salle, PlanningFixe, Scenario,
@@ -45,6 +46,17 @@ const MAX_SEANCES = 10      // 5 jours × 2 sous-séances/jour
 const JOURS_MON_VEN: JourSemaine[] = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
 // 6 jours × 4 sous-créneaux (MS1, MS2, PMS1, PMS2) = 24 sous-créneaux max par salle
 const MAX_CRENEAUX_SALLE = 24
+
+// Créneaux horaires pour la fiche emploi du temps
+const HORAIRES_SLOTS: { statut: StatutFixe; label: string; time: string; bg: string; fg: string }[] = [
+  { statut: 'Matin FP S1',      label: 'Matin S1',       time: '08h30 – 11h00', bg: '#EFF6FF', fg: '#1D4ED8' },
+  { statut: 'Matin FP S2',      label: 'Matin S2',       time: '11h00 – 13h30', bg: '#DBEAFE', fg: '#1E40AF' },
+  { statut: 'Après-midi FP S1', label: 'Après-midi S1',  time: '13h30 – 16h00', bg: '#FFF7ED', fg: '#C2410C' },
+  { statut: 'Après-midi FP S2', label: 'Après-midi S2',  time: '16h00 – 18h30', bg: '#FFFBEB', fg: '#92400E' },
+  { statut: 'FAD Matin',        label: 'FAD Matin',      time: '2h30 dist.',    bg: '#F5F3FF', fg: '#5B21B6' },
+  { statut: 'FAD Après-midi',   label: 'FAD Après-midi', time: '2h30 dist.',    bg: '#EDE9FE', fg: '#4C1D95' },
+  { statut: 'FAD 1h',           label: 'FAD Complément', time: '1h dist.',      bg: '#FAF5FF', fg: '#6B21A8' },
+]
 
 // ── Bannière taux d'occupation salle ─────────────────────────
 
@@ -295,6 +307,170 @@ function SeancesBadge({ count }: { count: number }) {
   )
 }
 
+// ── Fiche emploi du temps formateur ─────────────────────────
+
+function FormateurScheduleModal({
+  formateur, salle, planning, groupesFormation, onClose,
+}: {
+  formateur: Formateur
+  salle: Salle
+  planning: PlanningFixe[]
+  groupesFormation: Groupe[]
+  onClose: () => void
+}) {
+  const rows = planning.filter(p => p.formateur_id === formateur.id)
+  const slotsActifs = HORAIRES_SLOTS.filter(s => rows.some(r => r.statut === s.statut))
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ── Header ── */}
+        <div className="px-6 py-4 bg-[#003D70] rounded-t-xl flex items-center justify-between shrink-0">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-300 mb-0.5">
+              Emploi du temps
+            </p>
+            <h2 className="text-white text-base font-bold leading-tight">{formateur.nom}</h2>
+            {formateur.matricule && (
+              <p className="text-blue-200 text-[11px] mt-0.5">Matricule : {formateur.matricule}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-[10px] text-blue-300 uppercase tracking-wide">Salle</p>
+              <p className="text-white text-sm font-bold">{salle.nom}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Table ── */}
+        <div className="overflow-auto flex-1 p-5">
+          {slotsActifs.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm italic">
+              Aucune séance planifiée pour ce formateur.
+            </div>
+          ) : (
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b-2 border-[#003D70]">
+                  <th className="text-left px-3 py-2.5 font-semibold text-[#003D70] text-[10px] uppercase tracking-wide w-36">
+                    Créneau horaire
+                  </th>
+                  {JOURS_SEMAINE.map(jour => (
+                    <th
+                      key={jour}
+                      className={`px-2 py-2.5 text-center font-bold text-[11px] ${
+                        jour === 'Samedi'
+                          ? 'text-emerald-700 bg-emerald-50/60'
+                          : 'text-[#003D70]'
+                      }`}
+                    >
+                      {jour}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {slotsActifs.map((slot, idx) => (
+                  <tr key={slot.statut} className={`border-b ${idx % 2 === 0 ? 'bg-slate-50/40' : ''}`}>
+                    {/* Créneau label */}
+                    <td className="px-3 py-3 w-36">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <div
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: slot.fg }}
+                        />
+                        <span className="font-bold text-[11px]" style={{ color: slot.fg }}>
+                          {slot.label}
+                        </span>
+                      </div>
+                      <div className="text-[10px] font-mono text-muted-foreground pl-4">
+                        {slot.time}
+                      </div>
+                    </td>
+
+                    {/* Cellule par jour */}
+                    {JOURS_SEMAINE.map(jour => {
+                      const row = rows.find(r => r.jour_semaine === jour && r.statut === slot.statut)
+                      const groupeNom = row
+                        ? (groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom ?? null)
+                        : null
+
+                      return (
+                        <td
+                          key={jour}
+                          className={`px-2 py-3 text-center align-middle ${
+                            jour === 'Samedi' ? 'bg-emerald-50/30' : ''
+                          }`}
+                        >
+                          {row ? (
+                            <div
+                              className="rounded-lg px-2 py-2 inline-flex flex-col items-center gap-1 min-w-[76px] border"
+                              style={{
+                                backgroundColor: slot.bg,
+                                borderColor: slot.fg + '40',
+                              }}
+                            >
+                              <span
+                                className="text-[9px] font-bold font-mono tracking-tight"
+                                style={{ color: slot.fg }}
+                              >
+                                {slot.time}
+                              </span>
+                              {groupeNom ? (
+                                <span
+                                  className="text-[12px] font-extrabold leading-tight text-center"
+                                  style={{ color: slot.fg }}
+                                >
+                                  {groupeNom}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground/40 italic">—</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground/20 text-base">·</span>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="border-t px-6 py-3 flex items-center justify-between shrink-0 bg-slate-50 rounded-b-xl">
+          <p className="text-[11px] text-muted-foreground">
+            Planning hebdomadaire fixe · Lun–Sam
+          </p>
+          <button
+            onClick={onClose}
+            className="text-xs text-muted-foreground hover:text-foreground underline"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ── Vue standard (Scénario A / B) ────────────────────────────
 
 function StandardView({
@@ -322,6 +498,8 @@ function StandardView({
   onApplyRotation: (salleId: string, entries: { formateurId: string; statut: StatutSamedi }[]) => void
 }) {
   const [expandedSalles, setExpandedSalles] = useState<Set<string>>(new Set())
+  const [viewFormateur, setViewFormateur] = useState<{ formateur: Formateur; salle: Salle } | null>(null)
+
   function toggleRotation(salleId: string) {
     setExpandedSalles(prev => {
       const next = new Set(prev)
@@ -439,6 +617,16 @@ function StandardView({
 
   return (
     <>
+      {viewFormateur && (
+        <FormateurScheduleModal
+          formateur={viewFormateur.formateur}
+          salle={viewFormateur.salle}
+          planning={planning}
+          groupesFormation={groupesFormation}
+          onClose={() => setViewFormateur(null)}
+        />
+      )}
+
       {salles.map(salle => {
         const groupe = groupes.find(g => g.salle_id === salle.id)
         // N'afficher QUE les formateurs explicitement affectés à cette salle via le groupe technique
@@ -562,6 +750,14 @@ function StandardView({
                                 FAD {weeklyFADDays}/1
                               </span>
                             </div>
+                            <button
+                              onClick={() => setViewFormateur({ formateur, salle })}
+                              className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all bg-[#003D70]/10 text-[#003D70] hover:bg-[#003D70]/20 border border-[#003D70]/20"
+                              title="Voir emploi du temps"
+                            >
+                              <Eye className="h-3 w-3" />
+                              <span>Voir EDT</span>
+                            </button>
                             <PDFDownloadButton
                               formateurNom={formateur.nom}
                               matricule={formateur.matricule}
