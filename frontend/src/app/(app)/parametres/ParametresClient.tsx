@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
-import { Settings, Plus, Pencil, Power, Building2, Users, DoorOpen, GraduationCap, Upload } from 'lucide-react'
+import { Settings, Plus, Pencil, Power, Building2, Users, DoorOpen, GraduationCap, Upload, Trash2, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Pole, Salle, Groupe, Formateur } from '@/types/planning'
 
@@ -136,6 +136,7 @@ function PolesTab({
   const [newFormateurs, setNewFormateurs] = useState<string[]>([])
   const [newGroupes, setNewGroupes] = useState<string[]>([])
 
+  const [deletingPoleId, setDeletingPoleId] = useState<string | null>(null)
   const [editingPole, setEditingPole] = useState<Pole | null>(null)
   const [editSalles, setEditSalles] = useState<string[]>([])
   const [editFormateurs, setEditFormateurs] = useState<string[]>([])
@@ -298,6 +299,21 @@ function PolesTab({
     toast.success(pole.actif ? 'Pôle désactivé' : 'Pôle activé')
   }
 
+  async function handleDeletePole(poleId: string) {
+    // Désaffecter salles, formateurs et groupes avant suppression
+    await supabase.from('salles').update({ pole_id: null }).eq('pole_id', poleId)
+    await supabase.from('formateurs').update({ pole_id: null, groupe_id: null }).eq('pole_id', poleId)
+    await supabase.from('groupes').update({ pole_id: null }).eq('pole_id', poleId)
+    const { error } = await supabase.from('poles').delete().eq('id', poleId)
+    if (error) { toast.error('Erreur lors de la suppression'); return }
+    setPoles(prev => prev.filter(p => p.id !== poleId))
+    setSalles(prev => prev.map(s => s.pole_id === poleId ? { ...s, pole_id: null } : s))
+    setFormateurs(prev => prev.map(f => f.pole_id === poleId ? { ...f, pole_id: null, groupe_id: null } : f))
+    setGroupes(prev => prev.map(g => g.pole_id === poleId ? { ...g, pole_id: null } : g))
+    setDeletingPoleId(null)
+    toast.success('Pôle supprimé')
+  }
+
   return (
     <div className="space-y-4">
       {/* Liste des pôles */}
@@ -341,6 +357,20 @@ function PolesTab({
                 >
                   <Power className="h-3.5 w-3.5" />
                 </Button>
+                {deletingPoleId === pole.id ? (
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => handleDeletePole(pole.id)}>
+                      <Check className="h-3 w-3 mr-1" />Confirmer
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setDeletingPoleId(null)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => setDeletingPoleId(pole.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
           )
@@ -474,6 +504,7 @@ function FormateursTab({
 }: { initFormateurs: Formateur[]; poles: Pole[]; groupes: Groupe[] }) {
   const [formateurs, setFormateurs] = useState<Formateur[]>(initFormateurs)
   const [editingFormateur, setEditingFormateur] = useState<Formateur | null>(null)
+  const [deletingFormateurId, setDeletingFormateurId] = useState<string | null>(null)
   const [newFormateur, setNewFormateur] = useState({
     nom: '', matricule: '', pole_id: '', groupe_id: '',
   })
@@ -523,6 +554,15 @@ function FormateursTab({
     if (error) { toast.error('Erreur'); return }
     setFormateurs(prev => prev.map(x => x.id === f.id ? { ...x, actif: !x.actif } : x))
     toast.success(f.actif ? 'Formateur désactivé' : 'Formateur activé')
+  }
+
+  async function handleDeleteFormateur(fId: string) {
+    await supabase.from('planning_fixe').delete().eq('formateur_id', fId)
+    const { error } = await supabase.from('formateurs').delete().eq('id', fId)
+    if (error) { toast.error('Erreur lors de la suppression'); return }
+    setFormateurs(prev => prev.filter(f => f.id !== fId))
+    setDeletingFormateurId(null)
+    toast.success('Formateur supprimé')
   }
 
   const activePoles = poles.filter(p => p.actif)
@@ -590,6 +630,20 @@ function FormateursTab({
                 >
                   <Power className="h-3.5 w-3.5" />
                 </Button>
+                {deletingFormateurId === f.id ? (
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => handleDeleteFormateur(f.id)}>
+                      <Check className="h-3 w-3 mr-1" />Confirmer
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setDeletingFormateurId(null)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => setDeletingFormateurId(f.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
           )
@@ -680,17 +734,98 @@ function FormateursTab({
 
 // ── Onglet Salles ─────────────────────────────────────────────
 
-function SallesTab({ initSalles, poles, groupes }: { initSalles: Salle[]; poles: Pole[]; groupes: Groupe[] }) {
+const MAX_FORMATEURS_PAR_SALLE = 3
+
+function SallesTab({ initSalles, poles, groupes: initGroupes, initFormateurs }: {
+  initSalles: Salle[]
+  poles: Pole[]
+  groupes: Groupe[]
+  initFormateurs: Formateur[]
+}) {
   const [salles, setSalles] = useState<Salle[]>(initSalles)
+  const [groupes, setGroupes] = useState<Groupe[]>(initGroupes)
+  const [formateurs, setFormateurs] = useState<Formateur[]>(initFormateurs)
   const [adding, setAdding] = useState(false)
   const [newSalle, setNewSalle] = useState({ nom: '', pole_id: '' })
+  const [editingSalle, setEditingSalle] = useState<{ id: string; nom: string } | null>(null)
+  const [deletingSalleId, setDeletingSalleId] = useState<string | null>(null)
   const supabase = createClient()
+
+  // Groupe technique lié à une salle (crée si absent)
+  async function getOrCreateGroupeSalle(salleId: string): Promise<string> {
+    const existing = groupes.find(g => g.salle_id === salleId)
+    if (existing) return existing.id
+    const salle = salles.find(s => s.id === salleId)
+    const { data, error } = await supabase
+      .from('groupes')
+      .insert({ nom: `Grp-${salle?.nom ?? salleId}`, salle_id: salleId, pole_id: salle?.pole_id ?? null })
+      .select().single()
+    if (error || !data) return ''
+    const g = data as Groupe
+    setGroupes(prev => [...prev, g])
+    return g.id
+  }
+
+  // Formateurs actuellement affectés à une salle (via groupe technique)
+  function formateursParSalle(salleId: string): Formateur[] {
+    const g = groupes.find(gr => gr.salle_id === salleId)
+    if (!g) return []
+    return formateurs.filter(f => f.groupe_id === g.id)
+  }
+
+  // Formateurs disponibles (pas encore dans une salle, ou dans cette salle)
+  function formateursDisponibles(salleId: string): Formateur[] {
+    const salleGroupeIds = new Set(groupes.filter(g => g.salle_id).map(g => g.id))
+    const groupeSalle = groupes.find(g => g.salle_id === salleId)
+    return formateurs.filter(f => {
+      if (!f.groupe_id) return true                        // sans salle
+      if (f.groupe_id === groupeSalle?.id) return false    // déjà dans cette salle
+      if (salleGroupeIds.has(f.groupe_id)) return false    // dans une autre salle
+      return true
+    })
+  }
+
+  async function assignFormateur(salleId: string, formateurId: string) {
+    const groupeId = await getOrCreateGroupeSalle(salleId)
+    if (!groupeId) return
+    const { error } = await supabase.from('formateurs').update({ groupe_id: groupeId }).eq('id', formateurId)
+    if (error) { toast.error('Erreur lors de l\'affectation'); return }
+    setFormateurs(prev => prev.map(f => f.id === formateurId ? { ...f, groupe_id: groupeId } : f))
+    toast.success('Formateur affecté')
+  }
+
+  async function unassignFormateur(formateurId: string) {
+    const { error } = await supabase.from('formateurs').update({ groupe_id: null }).eq('id', formateurId)
+    if (error) { toast.error('Erreur'); return }
+    setFormateurs(prev => prev.map(f => f.id === formateurId ? { ...f, groupe_id: null } : f))
+    toast.success('Formateur retiré de la salle')
+  }
 
   async function handleAssignPole(salleId: string, poleId: string | null) {
     const { error } = await supabase.from('salles').update({ pole_id: poleId }).eq('id', salleId)
     if (error) { toast.error('Erreur'); return }
     setSalles(prev => prev.map(s => s.id === salleId ? { ...s, pole_id: poleId } : s))
     toast.success('Salle mise à jour')
+  }
+
+  async function handleRenameSalle() {
+    if (!editingSalle?.nom.trim()) return
+    const { error } = await supabase.from('salles').update({ nom: editingSalle.nom.trim() }).eq('id', editingSalle.id)
+    if (error) { toast.error('Erreur'); return }
+    setSalles(prev => prev.map(s => s.id === editingSalle.id ? { ...s, nom: editingSalle.nom.trim() } : s))
+    setEditingSalle(null)
+    toast.success('Salle renommée')
+  }
+
+  async function handleDeleteSalle(salleId: string) {
+    await supabase.from('groupes').update({ salle_id: null }).eq('salle_id', salleId)
+    await supabase.from('formateurs').update({ groupe_id: null }).in('groupe_id',
+      (groupes.filter(g => g.salle_id === salleId).map(g => g.id)))
+    const { error } = await supabase.from('salles').delete().eq('id', salleId)
+    if (error) { toast.error('Erreur lors de la suppression'); return }
+    setSalles(prev => prev.filter(s => s.id !== salleId))
+    setDeletingSalleId(null)
+    toast.success('Salle supprimée')
   }
 
   async function handleAddSalle() {
@@ -710,37 +845,104 @@ function SallesTab({ initSalles, poles, groupes }: { initSalles: Salle[]; poles:
     <div className="space-y-4">
       <div className="rounded-lg border divide-y">
         {salles.map(salle => {
-          const groupe = groupes.find(g => g.salle_id === salle.id)
           const pole = poles.find(p => p.id === salle.pole_id)
+          const isEditing = editingSalle?.id === salle.id
+          const formsSalle = formateursParSalle(salle.id)
+          const dispo = formateursDisponibles(salle.id)
+          const isFull = formsSalle.length >= MAX_FORMATEURS_PAR_SALLE
           return (
-            <div key={salle.id} className="flex items-center justify-between px-4 py-3 gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100">
-                  <DoorOpen className="h-4 w-4 text-amber-600" />
+            <div key={salle.id} className="px-4 py-3 space-y-2">
+              {/* Ligne principale salle */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-100">
+                    <DoorOpen className="h-4 w-4 text-amber-600" />
+                  </div>
+                  {isEditing ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <Input
+                        value={editingSalle.nom}
+                        onChange={e => setEditingSalle(s => s ? { ...s, nom: e.target.value } : null)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleRenameSalle(); if (e.key === 'Escape') setEditingSalle(null) }}
+                        className="h-7 text-sm flex-1 max-w-[180px]"
+                        autoFocus
+                      />
+                      <Button size="sm" className="h-7 px-2" onClick={handleRenameSalle}><Check className="h-3 w-3" /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingSalle(null)}><X className="h-3 w-3" /></Button>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-sm">{salle.nom}</p>
+                  )}
                 </div>
-                <div>
-                  <p className="font-medium text-sm">{salle.nom}</p>
-                  {groupe && <p className="text-xs text-muted-foreground">{groupe.nom}</p>}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {pole && (
-                  <span className="text-xs text-[#005FAD] bg-[#005FAD]/10 px-2 py-0.5 rounded-full">{pole.nom}</span>
+                {!isEditing && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {pole && (
+                      <span className="text-xs text-[#005FAD] bg-[#005FAD]/10 px-2 py-0.5 rounded-full">{pole.nom}</span>
+                    )}
+                    <Select value={salle.pole_id ?? ''} onValueChange={v => handleAssignPole(salle.id, v || null)}>
+                      <SelectTrigger className="h-7 w-36 text-xs">
+                        <SelectValue placeholder="Affecter à un pôle" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">— Aucun pôle —</SelectItem>
+                        {poles.filter(p => p.actif).map(p => (
+                          <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setEditingSalle({ id: salle.id, nom: salle.nom })}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    {deletingSalleId === salle.id ? (
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => handleDeleteSalle(salle.id)}>
+                          <Check className="h-3 w-3 mr-1" />Confirmer
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setDeletingSalleId(null)}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => setDeletingSalleId(salle.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 )}
-                <Select
-                  value={salle.pole_id ?? ''}
-                  onValueChange={v => handleAssignPole(salle.id, v || null)}
-                >
-                  <SelectTrigger className="h-7 w-36 text-xs">
-                    <SelectValue placeholder="Affecter à un pôle" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">— Aucun pôle —</SelectItem>
-                    {poles.filter(p => p.actif).map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              </div>
+
+              {/* Formateurs affectés */}
+              <div className="ml-11 flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide shrink-0">
+                  Formateurs
+                </span>
+                {formsSalle.map(f => (
+                  <span key={f.id} className="inline-flex items-center gap-1 rounded-full bg-[#00968C]/10 text-[#00968C] px-2 py-0.5 text-xs font-medium">
+                    {f.nom}
+                    <button
+                      onClick={() => unassignFormateur(f.id)}
+                      className="ml-0.5 text-[#00968C]/50 hover:text-red-500 transition-colors leading-none"
+                      title="Retirer de la salle"
+                    >×</button>
+                  </span>
+                ))}
+                {!isFull && dispo.length > 0 && (
+                  <Select onValueChange={(fId) => assignFormateur(salle.id, fId as string)}>
+                    <SelectTrigger className="h-6 w-auto px-2 text-xs border-dashed text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors gap-1">
+                      <Plus className="h-3 w-3" />
+                      <span>Ajouter</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {dispo.map(f => (
+                        <SelectItem key={f.id} value={f.id} className="text-xs">{f.nom}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <span className={`text-[10px] font-mono ml-1 ${isFull ? 'text-emerald-600 font-semibold' : 'text-muted-foreground/60'}`}>
+                  {formsSalle.length}/{MAX_FORMATEURS_PAR_SALLE}
+                </span>
+                {isFull && <span className="text-[10px] text-emerald-600 font-medium">· complet</span>}
               </div>
             </div>
           )
@@ -787,6 +989,8 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
   const [adding, setAdding] = useState(false)
   const [newGroupe, setNewGroupe] = useState({ nom: '', salle_id: '', pole_id: '' })
   const [importing, setImporting] = useState(false)
+  const [editingGroupe, setEditingGroupe] = useState<{ id: string; nom: string } | null>(null)
+  const [deletingGroupeId, setDeletingGroupeId] = useState<string | null>(null)
   const supabase = createClient()
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -837,6 +1041,25 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
     toast.success('Groupe mis à jour')
   }
 
+  async function handleRenameGroupe() {
+    if (!editingGroupe?.nom.trim()) return
+    const { error } = await supabase.from('groupes').update({ nom: editingGroupe.nom.trim() }).eq('id', editingGroupe.id)
+    if (error) { toast.error('Erreur'); return }
+    setGroupes(prev => prev.map(g => g.id === editingGroupe.id ? { ...g, nom: editingGroupe.nom.trim() } : g))
+    setEditingGroupe(null)
+    toast.success('Groupe renommé')
+  }
+
+  async function handleDeleteGroupe(groupeId: string) {
+    await supabase.from('formateurs').update({ groupe_id: null }).eq('groupe_id', groupeId)
+    await supabase.from('planning_fixe').delete().eq('groupe_formation_id', groupeId)
+    const { error } = await supabase.from('groupes').delete().eq('id', groupeId)
+    if (error) { toast.error('Erreur lors de la suppression'); return }
+    setGroupes(prev => prev.filter(g => g.id !== groupeId))
+    setDeletingGroupeId(null)
+    toast.success('Groupe supprimé')
+  }
+
   async function handleAddGroupe() {
     if (!newGroupe.nom.trim()) return
     const { data, error } = await supabase
@@ -866,36 +1089,67 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
         {groupes.map(groupe => {
           const salle = salles.find(s => s.id === groupe.salle_id)
           const pole = poles.find(p => p.id === groupe.pole_id)
+          const isEditing = editingGroupe?.id === groupe.id
           return (
             <div key={groupe.id} className="flex items-center justify-between px-4 py-3 gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#00968C]/10">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#00968C]/10">
                   <GraduationCap className="h-4 w-4 text-[#00968C]" />
                 </div>
-                <div>
-                  <p className="font-medium text-sm">{groupe.nom}</p>
-                  {salle && <p className="text-xs text-muted-foreground">→ {salle.nom}</p>}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {pole && (
-                  <span className="text-xs text-[#005FAD] bg-[#005FAD]/10 px-2 py-0.5 rounded-full">{pole.nom}</span>
+                {isEditing ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <Input
+                      value={editingGroupe.nom}
+                      onChange={e => setEditingGroupe(g => g ? { ...g, nom: e.target.value } : null)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleRenameGroupe(); if (e.key === 'Escape') setEditingGroupe(null) }}
+                      className="h-7 text-sm flex-1 max-w-[200px]"
+                      autoFocus
+                    />
+                    <Button size="sm" className="h-7 px-2" onClick={handleRenameGroupe}><Check className="h-3 w-3" /></Button>
+                    <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingGroupe(null)}><X className="h-3 w-3" /></Button>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="font-medium text-sm">{groupe.nom}</p>
+                    {salle && <p className="text-xs text-muted-foreground">→ {salle.nom}</p>}
+                  </div>
                 )}
-                <Select
-                  value={groupe.pole_id ?? ''}
-                  onValueChange={v => handleAssignPole(groupe.id, v || null)}
-                >
-                  <SelectTrigger className="h-7 w-36 text-xs">
-                    <SelectValue placeholder="Affecter à un pôle" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">— Aucun pôle —</SelectItem>
-                    {poles.filter(p => p.actif).map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
+              {!isEditing && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {pole && (
+                    <span className="text-xs text-[#005FAD] bg-[#005FAD]/10 px-2 py-0.5 rounded-full">{pole.nom}</span>
+                  )}
+                  <Select value={groupe.pole_id ?? ''} onValueChange={v => handleAssignPole(groupe.id, v || null)}>
+                    <SelectTrigger className="h-7 w-36 text-xs">
+                      <SelectValue placeholder="Affecter à un pôle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— Aucun pôle —</SelectItem>
+                      {poles.filter(p => p.actif).map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setEditingGroupe({ id: groupe.id, nom: groupe.nom })}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  {deletingGroupeId === groupe.id ? (
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => handleDeleteGroupe(groupe.id)}>
+                        <Check className="h-3 w-3 mr-1" />Confirmer
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setDeletingGroupeId(null)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => setDeletingGroupeId(groupe.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
@@ -984,7 +1238,7 @@ export function ParametresClient({ poles, salles, groupes, formateurs }: Props) 
         </TabsContent>
 
         <TabsContent value="salles">
-          <SallesTab initSalles={salles} poles={poles} groupes={groupes} />
+          <SallesTab initSalles={salles} poles={poles} groupes={groupes} initFormateurs={formateurs} />
         </TabsContent>
 
         <TabsContent value="groupes">

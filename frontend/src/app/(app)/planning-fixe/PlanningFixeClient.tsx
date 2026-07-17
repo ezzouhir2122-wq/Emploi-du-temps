@@ -16,7 +16,7 @@ import type {
   Formateur, Groupe, Salle, PlanningFixe, Scenario,
   JourSemaine, StatutFixe, RotationSamediConfig, CycleReference, StatutSamedi, SemaineCycle,
 } from '@/types/planning'
-import { JOURS_SEMAINE, STATUTS_FIXES } from '@/types/planning'
+import { JOURS_SEMAINE, STATUTS_FIXES, STATUT_TIMES } from '@/types/planning'
 import { getMoisCycle, getSamedisDuMois, parseISODate, toISODateString } from '@/lib/rotation'
 
 const MOIS_LABELS = [
@@ -33,11 +33,17 @@ const ROTATION_SUIVANTE: Record<StatutSamedi, StatutSamedi> = {
 }
 
 // Statuts qui comptent comme une séance travaillée
-const STATUTS_TRAVAIL: StatutFixe[] = ['Matin', 'Après-midi', 'Distance']
-const MAX_SEANCES = 5
+const STATUTS_TRAVAIL: StatutFixe[] = [
+  'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
+  'FAD Matin', 'FAD Après-midi',
+  'Matin', 'Après-midi', 'Distance', 'Distance Matin', 'Distance Après-midi', // legacy
+]
+// Statuts physiques (occupent la salle)
+const STATUTS_PHYSIQUES_FP: StatutFixe[] = ['Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2']
+const MAX_SEANCES = 10      // 5 jours × 2 sous-séances/jour
 const JOURS_MON_VEN: JourSemaine[] = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
-// 6 jours × (Matin + Après-midi) = 12 créneaux physiques max par salle par semaine
-const MAX_CRENEAUX_SALLE = 12
+// 6 jours × 4 sous-créneaux (MS1, MS2, PMS1, PMS2) = 24 sous-créneaux max par salle
+const MAX_CRENEAUX_SALLE = 24
 
 // ── Bannière taux d'occupation salle ─────────────────────────
 
@@ -263,12 +269,13 @@ function RotationSallePanel({
 // ── Helpers partagés ─────────────────────────────────────────
 
 function encodeValue(statut: StatutFixe, salleId: string | null): string {
-  if (statut === 'Distance' || statut === 'Repos') return statut
+  if (statut === 'Distance' || statut === 'Distance Matin' || statut === 'Distance Après-midi' || statut === 'Repos') return statut
   return salleId ? `${salleId}|${statut}` : statut
 }
 
 function decodeValue(value: string): { statut: StatutFixe; salleId: string | null } {
-  if (value === 'Distance' || value === 'Repos') return { statut: value as StatutFixe, salleId: null }
+  if (value === 'Distance' || value === 'Distance Matin' || value === 'Distance Après-midi' || value === 'Repos')
+    return { statut: value as StatutFixe, salleId: null }
   const [salleId, statut] = value.split('|')
   return { statut: statut as StatutFixe, salleId }
 }
@@ -291,7 +298,7 @@ function SeancesBadge({ count }: { count: number }) {
 
 function StandardView({
   salles, groupes, formateurs, planning, saving,
-  onStatutChange, onGroupeChange, groupesFormation,
+  onAddSubSession, onRemoveSubSession, onGroupeChange, groupesFormation,
   rotationConfig, cycleReferences, previewAnnee, previewMois,
   onRotationStatut, onAutoRotation, onAncrageSave, onApplyRotation,
 }: {
@@ -299,9 +306,10 @@ function StandardView({
   groupes: Groupe[]
   formateurs: Formateur[]
   planning: PlanningFixe[]
-  saving: string | null
-  onStatutChange: (formateurId: string, jour: JourSemaine, statut: StatutFixe) => void
-  onGroupeChange: (formateurId: string, jour: JourSemaine, groupeId: string | null) => void
+  saving: Set<string>
+  onAddSubSession: (formateurId: string, jour: JourSemaine, statut: StatutFixe) => void
+  onRemoveSubSession: (rowId: string) => void
+  onGroupeChange: (rowId: string, groupeId: string | null) => void
   groupesFormation: Groupe[]
   rotationConfig: RotationSamediConfig[]
   cycleReferences: CycleReference[]
@@ -321,67 +329,110 @@ function StandardView({
     })
   }
 
-  function getStatut(formateurId: string, jour: JourSemaine): StatutFixe | undefined {
-    return planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)?.statut
+  // Toutes les sous-séances actives d'un formateur pour un jour
+  function getActiveRows(formateurId: string, jour: JourSemaine): PlanningFixe[] {
+    return planning.filter(p => p.formateur_id === formateurId && p.jour_semaine === jour)
   }
 
-  // Séances Lundi-Vendredi uniquement (hors Samedi)
+  // Nombre total de sous-séances travaillées Lun-Ven
   function countSeancesMonVen(formateurId: string): number {
-    return JOURS_MON_VEN.filter(j => STATUTS_TRAVAIL.includes(getStatut(formateurId, j) as StatutFixe)).length
+    return planning.filter(p =>
+      p.formateur_id === formateurId &&
+      JOURS_MON_VEN.includes(p.jour_semaine as JourSemaine) &&
+      STATUTS_TRAVAIL.includes(p.statut)
+    ).length
   }
 
-  // Séances totales Lundi-Samedi
+  // Nombre total de sous-séances travaillées toute la semaine
   function countSeances(formateurId: string): number {
-    return JOURS_SEMAINE.filter(j => STATUTS_TRAVAIL.includes(getStatut(formateurId, j) as StatutFixe)).length
+    return planning.filter(p =>
+      p.formateur_id === formateurId &&
+      STATUTS_TRAVAIL.includes(p.statut)
+    ).length
   }
 
-  // Taux d'occupation : créneaux physiques (Matin + PM) saisis / 12
+  // Taux d'occupation : sous-créneaux physiques FP saisis / 24
   function getOccupationSalle(formateursSalle: Formateur[]): number {
-    let filled = 0
-    for (const jour of JOURS_SEMAINE) {
-      if (formateursSalle.some(f => getStatut(f.id, jour) === 'Matin')) filled++
-      if (formateursSalle.some(f => getStatut(f.id, jour) === 'Après-midi')) filled++
+    const slots = new Set<string>()
+    for (const p of planning) {
+      if (
+        formateursSalle.some(f => f.id === p.formateur_id) &&
+        STATUTS_PHYSIQUES_FP.includes(p.statut)
+      ) {
+        slots.add(`${p.jour_semaine}-${p.statut}`)
+      }
     }
-    return filled
+    return slots.size
   }
 
-  // Groupe actuellement affecté à cette séance
-  function getGroupeFormation(formateurId: string, jour: JourSemaine): string | null {
-    return planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)?.groupe_formation_id ?? null
-  }
-
-  // Groupes disponibles : filtrés par pôle de la salle + exclusion des créneaux déjà pris
-  function getGroupesDisponibles(formateurId: string, jour: JourSemaine, statut: StatutFixe, sallePoleId: string | null): Groupe[] {
+  // Groupes disponibles / indisponibles pour une sous-séance spécifique
+  function getGroupesParDisponibilite(
+    formateurId: string, jour: JourSemaine, statut: StatutFixe, sallePoleId: string | null
+  ): { disponibles: Groupe[]; indisponibles: Groupe[] } {
+    // Exclusivité par statut exact (chaque sous-créneau est indépendant)
     const prisIds = new Set(
       planning
-        .filter(p => p.formateur_id !== formateurId && p.jour_semaine === jour && p.statut === statut && p.groupe_formation_id)
+        .filter(p =>
+          p.formateur_id !== formateurId &&
+          p.jour_semaine === jour &&
+          p.statut === statut &&
+          p.groupe_formation_id
+        )
         .map(p => p.groupe_formation_id!)
     )
-    return groupesFormation.filter(g =>
-      !prisIds.has(g.id) &&
-      // Montrer : groupes du pôle de la salle OU groupes sans pôle (partagés entre tous)
-      (!sallePoleId || !g.pole_id || g.pole_id === sallePoleId)
+    const allGroupes = groupesFormation.filter(g =>
+      !sallePoleId || !g.pole_id || g.pole_id === sallePoleId
     )
+    return {
+      disponibles: allGroupes.filter(g => !prisIds.has(g.id)),
+      indisponibles: allGroupes.filter(g => prisIds.has(g.id)),
+    }
   }
 
+  // Demi-journée d'un statut (pour exclusivité matin / après-midi)
+  function getHalfDay(s: StatutFixe): 'matin' | 'apresmidi' | null {
+    if (['Matin FP S1','Matin FP S2','FAD Matin','Matin','Distance Matin'].includes(s)) return 'matin'
+    if (['Après-midi FP S1','Après-midi FP S2','FAD Après-midi','Après-midi','Distance Après-midi'].includes(s)) return 'apresmidi'
+    return null
+  }
+
+  // Statuts disponibles à ajouter pour ce formateur ce jour
   function getStatutsDisponibles(formateurId: string, jour: JourSemaine, formateursSalle: Formateur[]): StatutFixe[] {
-    const indisponibles = new Set<StatutFixe>()
+    const dejaActifs = new Set(
+      planning
+        .filter(p => p.formateur_id === formateurId && p.jour_semaine === jour)
+        .map(p => p.statut)
+    )
+    const prisParSalle = new Set(
+      planning
+        .filter(p =>
+          p.formateur_id !== formateurId &&
+          formateursSalle.some(f => f.id === p.formateur_id) &&
+          p.jour_semaine === jour
+        )
+        .map(p => p.statut)
+    )
 
-    for (const f of formateursSalle) {
-      if (f.id === formateurId) continue
-      const s = getStatut(f.id, jour)
-      if (s === 'Matin' || s === 'Après-midi') indisponibles.add(s)
-    }
+    if (countSeances(formateurId) >= MAX_SEANCES) return []
 
-    const dejaDistance = JOURS_SEMAINE
-      .filter(j => j !== jour)
-      .some(j => getStatut(formateurId, j) === 'Distance')
-    if (dejaDistance) indisponibles.add('Distance')
+    // Demi-journée déjà commencée → filtrer par cohérence
+    const demiJourneeActive = [...dejaActifs]
+      .map(getHalfDay)
+      .find(h => h !== null) ?? null
 
-    // Samedi : pas de Distance
-    if (jour === 'Samedi') indisponibles.add('Distance')
+    const isSamedi = jour === 'Samedi'
 
-    return STATUTS_FIXES.filter(s => !indisponibles.has(s as StatutFixe)) as StatutFixe[]
+    return STATUTS_FIXES.filter(s => {
+      if (dejaActifs.has(s)) return false
+      if (prisParSalle.has(s)) return false
+      if (isSamedi && (s === 'FAD Matin' || s === 'FAD Après-midi')) return false
+      // Si une demi-journée est déjà active, n'offrir que ses sous-séances
+      if (demiJourneeActive) {
+        const sHalf = getHalfDay(s)
+        if (sHalf && sHalf !== demiJourneeActive) return false
+      }
+      return true
+    })
   }
 
   return (
@@ -422,30 +473,23 @@ function StandardView({
                   <tr className="border-b bg-muted/50">
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground w-32">Formateur</th>
                     {JOURS_SEMAINE.map(jour => {
-                      const matinPris = formateursSalle.some(f => getStatut(f.id, jour) === 'Matin')
-                      const pmPris    = formateursSalle.some(f => getStatut(f.id, jour) === 'Après-midi')
-                      const complete  = matinPris && pmPris
                       const isSamedi  = jour === 'Samedi'
                       return (
-                        <th key={jour} className={`px-1 py-1.5 text-center font-medium text-muted-foreground min-w-[100px] ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40' : ''}`}>
+                        <th key={jour} className={`px-1 py-1.5 text-center font-medium text-muted-foreground min-w-[110px] ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40' : ''}`}>
                           <div className={`text-xs font-medium ${isSamedi ? 'text-emerald-700 font-semibold' : ''}`}>{jour}</div>
-                          <div className="flex justify-center mt-0.5">
-                            <span
-                              title={`${salle.nom} : ${matinPris ? 'Matin✓' : 'Matin○'} ${pmPris ? 'PM✓' : 'PM○'}`}
-                              className={`text-[8px] font-mono px-1 rounded ${
-                                complete ? 'bg-red-100 text-red-600'
-                                : (matinPris || pmPris) ? 'bg-amber-100 text-amber-600'
-                                : 'bg-green-100 text-green-600'
-                              }`}
-                            >
-                              {salleLabel}{complete ? '✓' : matinPris ? ' M' : pmPris ? ' PM' : ' ○'}
-                            </span>
+                          {/* Indicateurs 4 sous-créneaux */}
+                          <div className="flex justify-center gap-0.5 mt-0.5 flex-wrap">
+                            {(['Matin FP S1','Matin FP S2','Après-midi FP S1','Après-midi FP S2'] as StatutFixe[]).map(s => {
+                              const pris = formateursSalle.some(f => planning.some(p => p.formateur_id === f.id && p.jour_semaine === jour && p.statut === s))
+                              const short = s === 'Matin FP S1' ? 'MS1' : s === 'Matin FP S2' ? 'MS2' : s === 'Après-midi FP S1' ? 'PS1' : 'PS2'
+                              return (
+                                <span key={s} title={`${s}${pris ? ' — pris' : ' — libre'}`}
+                                  className={`text-[7px] font-mono px-0.5 rounded ${pris ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                  {short}
+                                </span>
+                              )
+                            })}
                           </div>
-                          {complete && (
-                            <div className="flex items-center justify-center gap-0.5 mt-0.5 text-[8px] text-red-500">
-                              <Info className="h-2 w-2" />complet
-                            </div>
-                          )}
                         </th>
                       )
                     })}
@@ -455,7 +499,7 @@ function StandardView({
                   {formateursSalle.map(formateur => {
                     const monVenCount = countSeancesMonVen(formateur.id)
                     const seances     = countSeances(formateur.id)
-                    const samediAuto  = monVenCount >= MAX_SEANCES
+                    const samediAuto  = monVenCount >= MAX_SEANCES // 10 sous-séances Lun-Ven = quota plein
 
                     return (
                       <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
@@ -466,11 +510,10 @@ function StandardView({
                           </div>
                         </td>
                         {JOURS_SEMAINE.map(jour => {
-                          const statut      = getStatut(formateur.id, jour)
-                          const key         = `${formateur.id}-${jour}`
-                          const isSamedi    = jour === 'Samedi'
+                          const isSamedi   = jour === 'Samedi'
+                          const activeRows = getActiveRows(formateur.id, jour)
+                          const canAdd     = seances < MAX_SEANCES
 
-                          // Samedi auto-Repos si Mon-Ven = 5
                           if (isSamedi && samediAuto) {
                             return (
                               <td key={jour} className="px-1 py-1.5 text-center border-l-2 border-dashed border-muted-foreground/40 bg-slate-50/60">
@@ -482,94 +525,145 @@ function StandardView({
                             )
                           }
 
-                          const disponibles = getStatutsDisponibles(formateur.id, jour, formateursSalle)
-                          const physiques   = disponibles.filter(s => s === 'Matin' || s === 'Après-midi')
-                          const autres      = disponibles.filter(s => s !== 'Matin' && s !== 'Après-midi')
-                          const salleComplete = formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Matin')
-                                            && formateursSalle.some(f => f.id !== formateur.id && getStatut(f.id, jour) === 'Après-midi')
-                          const trop = !statut && seances >= MAX_SEANCES
+                          // Bloc Matin FP pris par un AUTRE formateur de la même salle
+                          const matinFPPris = formateursSalle.some(f =>
+                            f.id !== formateur.id && planning.some(p =>
+                              p.formateur_id === f.id && p.jour_semaine === jour &&
+                              (p.statut === 'Matin FP S1' || p.statut === 'Matin FP S2')
+                            ))
+                          // Bloc PM FP pris par un AUTRE formateur
+                          const pmFPPris = formateursSalle.some(f =>
+                            f.id !== formateur.id && planning.some(p =>
+                              p.formateur_id === f.id && p.jour_semaine === jour &&
+                              (p.statut === 'Après-midi FP S1' || p.statut === 'Après-midi FP S2')
+                            ))
 
-                          const groupeId = getGroupeFormation(formateur.id, jour)
-                          const groupeNom = groupesFormation.find(g => g.id === groupeId)?.nom
-                          const needsGroupe = statut === 'Matin' || statut === 'Après-midi' || statut === 'Distance'
-                          const groupesDispo = needsGroupe ? getGroupesDisponibles(formateur.id, jour, statut, salle.pole_id) : []
+                          // Rows de ce formateur par sous-créneau
+                          const ms1 = activeRows.find(r => r.statut === 'Matin FP S1')
+                          const ms2 = activeRows.find(r => r.statut === 'Matin FP S2')
+                          const ps1 = activeRows.find(r => r.statut === 'Après-midi FP S1')
+                          const ps2 = activeRows.find(r => r.statut === 'Après-midi FP S2')
+                          const fadM = activeRows.find(r => r.statut === 'FAD Matin')
+                          const fadP = activeRows.find(r => r.statut === 'FAD Après-midi')
+
+                          const hasMatinBlock = !!(ms1 || ms2)
+                          const hasPmBlock    = !!(ps1 || ps2)
+                          const hasFadMatin   = !!fadM
+                          const hasFadPm      = !!fadP
+
+                          // Helper: rendu d'un slot avec groupe
+                          const renderSlot = (row: PlanningFixe | undefined, statut: StatutFixe, showAdd: boolean, borderClass: string) => {
+                            const { disponibles: gDispo, indisponibles: gIndispo } = row
+                              ? getGroupesParDisponibilite(formateur.id, jour, statut, salle.pole_id)
+                              : { disponibles: [] as Groupe[], indisponibles: [] as Groupe[] }
+                            const groupeNom = row ? groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom : undefined
+                            const time = STATUT_TIMES[statut]
+
+                            if (!row && !showAdd) return null
+                            return (
+                              <div key={statut} className={`px-1.5 py-1 ${borderClass}`}>
+                                {row ? (
+                                  <>
+                                    <div className="flex items-center gap-1 mb-0.5">
+                                      {time && <span className="text-[8px] text-muted-foreground/70 font-mono">{time}</span>}
+                                      <button
+                                        onClick={() => onRemoveSubSession(row.id)}
+                                        className="ml-auto text-muted-foreground/30 hover:text-red-500 text-[11px] leading-none transition-colors"
+                                        title="Supprimer"
+                                      >×</button>
+                                    </div>
+                                    <Select
+                                      value={row.groupe_formation_id ?? '__none__'}
+                                      onValueChange={val => onGroupeChange(row.id, val === '__none__' ? null : val)}
+                                    >
+                                      <SelectTrigger className={`h-5 w-full text-[9px] px-1 border-dashed ${row.groupe_formation_id ? 'border-solid border-primary/30 bg-primary/5' : 'text-muted-foreground/40'}`}>
+                                        <SelectValue>
+                                          {groupeNom
+                                            ? <span className="font-semibold text-primary/80">{groupeNom}</span>
+                                            : <span className="italic">Groupe…</span>
+                                          }
+                                        </SelectValue>
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__none__" className="text-xs italic text-muted-foreground">— Aucun —</SelectItem>
+                                        {gDispo.length === 0 && gIndispo.length === 0 && (
+                                          <div className="px-3 py-2 text-xs text-muted-foreground italic">
+                                            {salle.pole_id ? 'Aucun groupe pour ce pôle' : 'Aucun groupe disponible'}
+                                          </div>
+                                        )}
+                                        {gDispo.length > 0 && <div className="h-px bg-border my-1" />}
+                                        {gDispo.map(g => <SelectItem key={g.id} value={g.id} className="text-xs font-medium">{g.nom}</SelectItem>)}
+                                        {gIndispo.length > 0 && (
+                                          <>
+                                            <div className="h-px bg-border mt-1" />
+                                            <div className="px-2 py-1 flex items-center gap-1 text-[9px] font-semibold text-rose-500/80 uppercase">
+                                              <Info className="h-2.5 w-2.5" /> Non disponibles
+                                            </div>
+                                            {gIndispo.map(g => <SelectItem key={g.id} value={g.id} disabled className="text-xs line-through text-muted-foreground/40">{g.nom}</SelectItem>)}
+                                          </>
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </>
+                                ) : (
+                                  <button
+                                    onClick={() => onAddSubSession(formateur.id, jour, statut)}
+                                    className="w-full text-[9px] text-muted-foreground/50 hover:text-primary/70 py-0.5 text-left transition-colors flex items-center gap-1"
+                                  >
+                                    <span className="text-[10px]">＋</span>
+                                    <span>{time}</span>
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          }
 
                           return (
-                            <td key={jour} className={`px-1 py-1 text-center ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
-                              {/* Statut */}
-                              <Select
-                                value={statut ?? ''}
-                                onValueChange={val => onStatutChange(formateur.id, jour, val as StatutFixe)}
-                                disabled={saving === key}
-                              >
-                                <SelectTrigger className={`h-7 w-[96px] text-xs mx-auto px-2 ${trop ? 'border-orange-300' : ''}`}>
-                                  <SelectValue placeholder="—">
-                                    {statut
-                                      ? <StatutBadge statut={statut} />
-                                      : <span className="text-muted-foreground/40 text-[10px]">—</span>
-                                    }
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {trop && (
-                                    <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-orange-600 bg-orange-50 border-b">
-                                      <Info className="h-3 w-3 shrink-0" />
-                                      {seances}/{MAX_SEANCES} séances atteint
-                                    </div>
-                                  )}
-                                  {salleComplete && physiques.length === 0 && (
-                                    <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b">
-                                      <Info className="h-3 w-3 shrink-0" />
-                                      {salleLabel} non disponible
-                                    </div>
-                                  )}
-                                  {physiques.map(s => (
-                                    <SelectItem key={s} value={s}>
-                                      <span className="flex items-center gap-1.5 text-xs">
-                                        <span className="text-muted-foreground font-mono text-[10px]">{salleLabel}</span>
-                                        <StatutBadge statut={s} />
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                                  {physiques.length > 0 && autres.length > 0 && <div className="h-px bg-border my-1" />}
-                                  {autres.map(s => (
-                                    <SelectItem key={s} value={s}>
-                                      <StatutBadge statut={s} />
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                            <td key={jour} className={`px-0.5 py-1 align-top min-w-[120px] ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
+                              <div className="flex flex-col gap-1">
 
-                              {/* Groupe de formation */}
-                              {needsGroupe && (
-                                <Select
-                                  value={groupeId ?? '__none__'}
-                                  onValueChange={val => onGroupeChange(formateur.id, jour, val === '__none__' ? null : val)}
-                                >
-                                  <SelectTrigger className={`h-6 w-[96px] text-[10px] mx-auto mt-0.5 px-1.5 border-dashed ${groupeId ? 'border-solid border-primary/40 bg-primary/5 font-medium' : 'text-muted-foreground/50'}`}>
-                                    <SelectValue>
-                                      {groupeNom
-                                        ? <span className="text-[10px] font-semibold text-primary/80">{groupeNom}</span>
-                                        : <span className="text-[9px] text-muted-foreground/40 italic">Groupe…</span>
-                                      }
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="__none__" className="text-xs text-muted-foreground italic">— Aucun —</SelectItem>
-                                    {groupesDispo.length > 0 && <div className="h-px bg-border my-1" />}
-                                    {groupesDispo.map(g => (
-                                      <SelectItem key={g.id} value={g.id} className="text-xs font-medium">{g.nom}</SelectItem>
-                                    ))}
-                                    {groupesDispo.length === 0 && (
-                                      <div className="px-3 py-2 text-xs text-muted-foreground italic">
-                                        {salle.pole_id
-                                          ? 'Aucun groupe assigné à ce pôle — configurez dans Paramètres → Pôles'
-                                          : 'Tous les groupes sont pris'}
-                                      </div>
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                              )}
+                                {/* ── BLOC MATIN FP ── */}
+                                {(hasMatinBlock || (!matinFPPris && !hasFadMatin && !hasFadPm && canAdd)) && (
+                                  <div className="rounded border border-blue-200 bg-blue-50/30 overflow-hidden">
+                                    <div className="px-1.5 py-0.5 bg-blue-100/60 text-[9px] font-semibold text-blue-700 uppercase tracking-wide">
+                                      {salleLabel} · Matin FP
+                                    </div>
+                                    {renderSlot(ms1, 'Matin FP S1', !matinFPPris && canAdd, 'border-b border-blue-100')}
+                                    {(ms1 || ms2) && renderSlot(ms2, 'Matin FP S2', !matinFPPris && canAdd && !!ms1, '')}
+                                  </div>
+                                )}
+
+                                {/* ── BLOC APRÈS-MIDI FP ── */}
+                                {(hasPmBlock || (!pmFPPris && !hasFadMatin && !hasFadPm && canAdd)) && (
+                                  <div className="rounded border border-amber-200 bg-amber-50/30 overflow-hidden">
+                                    <div className="px-1.5 py-0.5 bg-amber-100/60 text-[9px] font-semibold text-amber-700 uppercase tracking-wide">
+                                      {salleLabel} · Après-midi FP
+                                    </div>
+                                    {renderSlot(ps1, 'Après-midi FP S1', !pmFPPris && canAdd, 'border-b border-amber-100')}
+                                    {(ps1 || ps2) && renderSlot(ps2, 'Après-midi FP S2', !pmFPPris && canAdd && !!ps1, '')}
+                                  </div>
+                                )}
+
+                                {/* ── BLOC FAD ── */}
+                                {!isSamedi && (hasFadMatin || hasFadPm || (!hasMatinBlock && !hasPmBlock && canAdd)) && (
+                                  <div className="rounded border border-violet-200 bg-violet-50/20 overflow-hidden">
+                                    <div className="px-1.5 py-0.5 bg-violet-100/50 text-[9px] font-semibold text-violet-700 uppercase tracking-wide">FAD</div>
+                                    {renderSlot(fadM, 'FAD Matin', canAdd && !hasFadPm, 'border-b border-violet-100')}
+                                    {renderSlot(fadP, 'FAD Après-midi', canAdd && !hasFadMatin, '')}
+                                  </div>
+                                )}
+
+                                {/* Repos implicite */}
+                                {activeRows.length === 0 && (
+                                  <div className="flex justify-center pt-0.5">
+                                    <StatutBadge statut="Repos" className="text-[10px]" />
+                                  </div>
+                                )}
+
+                                {!canAdd && activeRows.length === 0 && (
+                                  <div className="text-[8px] text-orange-400 text-center">{seances}/{MAX_SEANCES}</div>
+                                )}
+                              </div>
                             </td>
                           )
                         })}
@@ -617,7 +711,7 @@ function PoolMixedView({
   salles: Salle[]
   formateurs: Formateur[]
   planning: PlanningFixe[]
-  saving: string | null
+  saving: Set<string>
   onAssign: (formateurId: string, jour: JourSemaine, value: string) => void
 }) {
   function getSlotsPris(jour: JourSemaine, salleId: string, excludeFormateurId: string): Set<StatutFixe> {
@@ -646,7 +740,7 @@ function PoolMixedView({
 
   function renderCurrentValue(value: string): React.ReactNode {
     if (!value) return <span className="text-muted-foreground/50">—</span>
-    if (value === 'Distance' || value === 'Repos') return <StatutBadge statut={value as StatutFixe} />
+    if (value === 'Distance' || value === 'Distance Matin' || value === 'Distance Après-midi' || value === 'Repos') return <StatutBadge statut={value as StatutFixe} />
     const { statut, salleId } = decodeValue(value)
     const salle = salles.find(s => s.id === salleId)
     return (
@@ -750,14 +844,17 @@ function PoolMixedView({
 
                     const dejaDistance = JOURS_SEMAINE
                       .filter(j => j !== jour)
-                      .some(j => planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === j)?.statut === 'Distance')
+                      .some(j => {
+                        const st = planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === j)?.statut
+                        return st === 'Distance' || st === 'Distance Matin' || st === 'Distance Après-midi'
+                      })
 
                     return (
                       <td key={jour} className={`px-2 py-2 text-center ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
                         <Select
                           value={currentVal}
                           onValueChange={val => onAssign(formateur.id, jour, val ?? '')}
-                          disabled={saving === key}
+                          disabled={saving.has(key)}
                         >
                           <SelectTrigger className="h-8 w-[150px] text-xs mx-auto">
                             <SelectValue>{renderCurrentValue(currentVal)}</SelectValue>
@@ -789,7 +886,10 @@ function PoolMixedView({
                             })}
                             {optionsPhysiques.length > 0 && <div className="h-px bg-border my-1" />}
                             {!dejaDistance && !isSamedi && (
-                              <SelectItem value="Distance"><StatutBadge statut="Distance" /></SelectItem>
+                              <>
+                                <SelectItem value="Distance Matin"><StatutBadge statut="Distance Matin" /></SelectItem>
+                                <SelectItem value="Distance Après-midi"><StatutBadge statut="Distance Après-midi" /></SelectItem>
+                              </>
                             )}
                             <SelectItem value="Repos"><StatutBadge statut="Repos" /></SelectItem>
                           </SelectContent>
@@ -818,7 +918,7 @@ function PoolMixedView({
 export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, activeScenario, rotationConfig: initRotation, cycleReferences: initCycleRefs }: Props) {
   const groupesFormation = groupes.filter(isGroupeFormation)
   const [planning, setPlanning] = useState<PlanningFixe[]>(planningFixe)
-  const [saving, setSaving] = useState<string | null>(null)
+  const [saving, setSaving] = useState<Set<string>>(new Set())
   const [rotationCfg, setRotationCfg] = useState<RotationSamediConfig[]>(initRotation)
   const [cycleRefs, setCycleRefs] = useState<CycleReference[]>(initCycleRefs)
   const now = new Date()
@@ -828,61 +928,63 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
 
   const isPoolMixed = activeScenario?.config && 'type' in activeScenario.config && activeScenario.config.type === 'pool_mixed'
 
+  function addSaving(key: string) { setSaving(prev => new Set(prev).add(key)) }
+  function delSaving(key: string) { setSaving(prev => { const n = new Set(prev); n.delete(key); return n }) }
+
   // ── Handlers Planning Fixe ────────────────────────────────
-  async function handleStatutChange(formateurId: string, jour: JourSemaine, statut: StatutFixe) {
-    const key = `${formateurId}-${jour}`
-    setSaving(key)
-    const existing = planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)
+  async function handleAddSubSession(formateurId: string, jour: JourSemaine, statut: StatutFixe) {
+    const key = `${formateurId}-${jour}-${statut}`
+    addSaving(key)
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('planning_fixe')
-      .upsert(
-        { formateur_id: formateurId, jour_semaine: jour, statut, groupe_formation_id: null },
-        { onConflict: 'formateur_id,jour_semaine' }
-      )
+      .insert({ formateur_id: formateurId, jour_semaine: jour, statut, groupe_formation_id: null, salle_id: null })
+      .select()
+      .single()
 
-    if (error) { toast.error('Erreur lors de la sauvegarde'); setSaving(null); return }
+    if (error) { toast.error('Erreur lors de la sauvegarde'); delSaving(key); return }
 
-    const newEntry: PlanningFixe = { id: existing?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: jour, statut, salle_id: null, groupe_formation_id: null }
-    const updatedPlanning = [
-      ...planning.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === jour)),
-      newEntry,
-    ]
-    setPlanning(updatedPlanning)
-    toast.success('Statut mis à jour')
-    setSaving(null)
+    const updated = [...planning, data as PlanningFixe]
+    setPlanning(updated)
+    toast.success('Sous-séance ajoutée')
+    delSaving(key)
 
-    // Auto-Repos Samedi si Mon-Ven atteint 5 séances
+    // Auto-Repos Samedi si Mon-Ven atteint le quota
     if (jour !== 'Samedi') {
-      const monVenCount = JOURS_MON_VEN.filter(j =>
-        STATUTS_TRAVAIL.includes(
-          updatedPlanning.find(p => p.formateur_id === formateurId && p.jour_semaine === j)?.statut as StatutFixe
-        )
+      const monVenCount = updated.filter(p =>
+        p.formateur_id === formateurId &&
+        JOURS_MON_VEN.includes(p.jour_semaine as JourSemaine) &&
+        STATUTS_TRAVAIL.includes(p.statut)
       ).length
-
       if (monVenCount >= MAX_SEANCES) {
-        const samediEntry = updatedPlanning.find(p => p.formateur_id === formateurId && p.jour_semaine === 'Samedi')
-        if (!samediEntry || samediEntry.statut !== 'Repos') {
-          const { error: errSam } = await supabase
-            .from('planning_fixe')
-            .upsert(
-              { formateur_id: formateurId, jour_semaine: 'Samedi', statut: 'Repos' },
-              { onConflict: 'formateur_id,jour_semaine' }
-            )
-          if (!errSam) {
-            setPlanning(prev => [
-              ...prev.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === 'Samedi')),
-              { id: samediEntry?.id ?? crypto.randomUUID(), formateur_id: formateurId, jour_semaine: 'Samedi', statut: 'Repos', salle_id: null, groupe_formation_id: null },
-            ])
-          }
+        // Supprimer toutes les sous-séances du Samedi pour ce formateur
+        const samediRows = updated.filter(p => p.formateur_id === formateurId && p.jour_semaine === 'Samedi')
+        for (const row of samediRows) {
+          await supabase.from('planning_fixe').delete().eq('id', row.id)
+        }
+        if (samediRows.length > 0) {
+          setPlanning(prev => prev.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === 'Samedi')))
         }
       }
     }
   }
 
+  async function handleRemoveSubSession(rowId: string) {
+    const row = planning.find(p => p.id === rowId)
+    if (!row) return
+    const key = `${row.formateur_id}-${row.jour_semaine}-${row.statut}`
+    addSaving(key)
+
+    const { error } = await supabase.from('planning_fixe').delete().eq('id', rowId)
+    if (error) { toast.error('Erreur lors de la suppression'); delSaving(key); return }
+
+    setPlanning(prev => prev.filter(p => p.id !== rowId))
+    delSaving(key)
+  }
+
   async function handlePoolAssign(formateurId: string, jour: JourSemaine, value: string) {
     const key = `${formateurId}-${jour}`
-    setSaving(key)
+    addSaving(key)
     const { statut, salleId } = decodeValue(value)
     const existing = planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)
 
@@ -900,25 +1002,18 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
       ])
       toast.success('Statut mis à jour')
     }
-    setSaving(null)
+    delSaving(key)
   }
 
-  async function handleGroupeChange(formateurId: string, jour: JourSemaine, groupeId: string | null) {
-    const existing = planning.find(p => p.formateur_id === formateurId && p.jour_semaine === jour)
-    if (!existing) return // statut doit être défini avant d'affecter un groupe
-
+  async function handleGroupeChange(rowId: string, groupeId: string | null) {
     const { error } = await supabase
       .from('planning_fixe')
       .update({ groupe_formation_id: groupeId })
-      .eq('id', existing.id)
+      .eq('id', rowId)
 
     if (error) { toast.error('Erreur lors de la sauvegarde du groupe'); return }
 
-    setPlanning(prev => prev.map(p =>
-      p.formateur_id === formateurId && p.jour_semaine === jour
-        ? { ...p, groupe_formation_id: groupeId }
-        : p
-    ))
+    setPlanning(prev => prev.map(p => p.id === rowId ? { ...p, groupe_formation_id: groupeId } : p))
   }
 
   // ── Handlers Rotation Samedi ──────────────────────────────
@@ -983,9 +1078,23 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
 
   // Applique la rotation du mois sélectionné sur la colonne Samedi du planning fixe
   async function handleApplyRotation(_salleId: string, entries: { formateurId: string; statut: StatutSamedi }[]) {
-    await Promise.all(entries.map(({ formateurId, statut }) =>
-      handleStatutChange(formateurId, 'Samedi', statut as StatutFixe)
-    ))
+    // Map legacy rotation statuts vers nouveaux sous-créneaux (S1 par défaut)
+    const statutMap: Record<StatutSamedi, StatutFixe> = {
+      'Matin': 'Matin FP S1',
+      'Après-midi': 'Après-midi FP S1',
+      'Repos': 'Repos',
+    }
+    for (const { formateurId, statut } of entries) {
+      if (statut === 'Repos') continue
+      // Supprimer les séances Samedi existantes
+      const existing = planning.filter(p => p.formateur_id === formateurId && p.jour_semaine === 'Samedi')
+      for (const row of existing) {
+        await supabase.from('planning_fixe').delete().eq('id', row.id)
+      }
+      setPlanning(prev => prev.filter(p => !(p.formateur_id === formateurId && p.jour_semaine === 'Samedi')))
+      // Ajouter la nouvelle sous-séance
+      await handleAddSubSession(formateurId, 'Samedi', statutMap[statut])
+    }
     toast.success(`Rotation Samedi (${MOIS_LABELS[selectedMois - 1]}) appliquée au planning`)
   }
 
@@ -1058,7 +1167,8 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           formateurs={formateurs}
           planning={planning}
           saving={saving}
-          onStatutChange={handleStatutChange}
+          onAddSubSession={handleAddSubSession}
+          onRemoveSubSession={handleRemoveSubSession}
           onGroupeChange={handleGroupeChange}
           groupesFormation={groupesFormation}
           rotationConfig={rotationCfg}

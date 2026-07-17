@@ -3,7 +3,14 @@
 // ============================================================
 
 export type JourSemaine = 'Lundi' | 'Mardi' | 'Mercredi' | 'Jeudi' | 'Vendredi' | 'Samedi'
-export type StatutFixe = 'Matin' | 'Après-midi' | 'Distance' | 'Repos'
+export type StatutFixe =
+  | 'Matin FP S1' | 'Matin FP S2'
+  | 'Après-midi FP S1' | 'Après-midi FP S2'
+  | 'FAD Matin' | 'FAD Après-midi'
+  | 'Repos'
+  // Legacy (rétrocompatibilité données existantes)
+  | 'Matin' | 'Après-midi' | 'Distance' | 'Distance Matin' | 'Distance Après-midi'
+
 export type StatutSamedi = 'Matin' | 'Après-midi' | 'Repos'
 export type SemaineCycle = 1 | 2 | 3
 export type TypeScenario = 'groups_fixed' | 'groups_rotating' | 'pool_mixed'
@@ -12,13 +19,33 @@ export const JOURS_SEMAINE: JourSemaine[] = [
   'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi',
 ]
 
-export const STATUTS_FIXES: StatutFixe[] = ['Matin', 'Après-midi', 'Distance', 'Repos']
+// Statuts sélectionnables dans l'UI (hors legacy)
+export const STATUTS_FIXES: StatutFixe[] = [
+  'Matin FP S1', 'Matin FP S2',
+  'Après-midi FP S1', 'Après-midi FP S2',
+  'FAD Matin', 'FAD Après-midi',
+]
 
-// Statuts qui occupent physiquement la salle
-export const STATUTS_PHYSIQUES: StatutFixe[] = ['Matin', 'Après-midi']
+// Statuts qui occupent physiquement la salle (compte dans les 24 sous-créneaux)
+export const STATUTS_PHYSIQUES: StatutFixe[] = [
+  'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
+  'Matin', 'Après-midi', // legacy
+]
 
 // Statuts qui comptent dans la masse horaire du formateur
-export const STATUTS_TRAVAIL: StatutFixe[] = ['Matin', 'Après-midi', 'Distance']
+export const STATUTS_TRAVAIL: StatutFixe[] = [
+  'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
+  'FAD Matin', 'FAD Après-midi',
+  'Matin', 'Après-midi', 'Distance', 'Distance Matin', 'Distance Après-midi', // legacy
+]
+
+// Horaires par statut
+export const STATUT_TIMES: Partial<Record<StatutFixe, string>> = {
+  'Matin FP S1':       '08h30–11h00',
+  'Matin FP S2':       '11h00–13h30',
+  'Après-midi FP S1':  '13h30–16h00',
+  'Après-midi FP S2':  '16h00–18h30',
+}
 
 // Durée en heures de chaque séance
 export const DUREE_SEANCE_H = 5
