@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { CalendarDays, Info, RotateCcw, Wand2, ChevronDown, ChevronUp, Settings2, Play, Eye, X } from 'lucide-react'
+import { CalendarDays, Info, RotateCcw, Wand2, ChevronDown, ChevronUp, Settings2, Play, Eye, X, FileDown, Users } from 'lucide-react'
 import { PDFDownloadButton } from '@/components/pdf/PDFDownloadButton'
 import type {
   Formateur, Groupe, Salle, PlanningFixe, Scenario,
@@ -499,6 +499,7 @@ function StandardView({
 }) {
   const [expandedSalles, setExpandedSalles] = useState<Set<string>>(new Set())
   const [viewFormateur, setViewFormateur] = useState<{ formateur: Formateur; salle: Salle } | null>(null)
+  const [pdfLoadingKey, setPdfLoadingKey] = useState<string | null>(null)
 
   function toggleRotation(salleId: string) {
     setExpandedSalles(prev => {
@@ -615,6 +616,96 @@ function StandardView({
     })
   }
 
+  const DUREE_PDF: Partial<Record<StatutFixe, number>> = {
+    'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
+    'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
+    'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
+  }
+
+  async function openGroupePDF(groupe: Groupe) {
+    const key = `groupe-${groupe.id}`
+    if (pdfLoadingKey) return
+    setPdfLoadingKey(key)
+    try {
+      const rows = planning.filter(p => p.groupe_formation_id === groupe.id)
+      const poleNom = salles.find(s => s.pole_id === groupe.pole_id)?.pole?.nom ?? null
+      const planningRows = rows.map(p => ({
+        jour_semaine: p.jour_semaine,
+        statut: p.statut,
+        formateur_nom: formateurs.find(f => f.id === p.formateur_id)?.nom ?? null,
+      }))
+      const totalSeances = rows.length
+      const totalHeures = rows.reduce((acc, p) => acc + (DUREE_PDF[p.statut] ?? 0), 0)
+
+      const [{ pdf }, { createElement }, { GroupePlanningPDF }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('react'),
+        import('@/components/pdf/GroupePlanningPDF'),
+      ])
+      const blob = await pdf(createElement(GroupePlanningPDF as any, {
+        groupeNom: groupe.nom, poleNom,
+        planning: planningRows, totalSeances, totalHeures,
+        dateGeneration: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }),
+        logoUrl: `${window.location.origin}/OFPPT_Logo.png`,
+      }) as any).toBlob()
+      const url = URL.createObjectURL(blob)
+      const win = window.open(url, '_blank')
+      if (!win) {
+        const a = document.createElement('a')
+        a.href = url; a.download = `EDT-${groupe.nom}.pdf`
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000)
+    } catch (err) {
+      console.error('Erreur génération PDF groupe', err)
+    } finally {
+      setPdfLoadingKey(null)
+    }
+  }
+
+  async function openSallePDF(salle: Salle, formateursSalle: Formateur[]) {
+    const key = `salle-${salle.id}`
+    if (pdfLoadingKey) return
+    setPdfLoadingKey(key)
+    try {
+      const FP_STATUTS: StatutFixe[] = ['Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2']
+      const rows = planning.filter(p =>
+        formateursSalle.some(f => f.id === p.formateur_id) &&
+        FP_STATUTS.includes(p.statut)
+      )
+      const planningRows = rows.map(p => ({
+        jour_semaine: p.jour_semaine,
+        statut: p.statut,
+        formateur_nom: formateursSalle.find(f => f.id === p.formateur_id)?.nom ?? null,
+        groupe_nom: groupesFormation.find(g => g.id === p.groupe_formation_id)?.nom ?? null,
+      }))
+
+      const [{ pdf }, { createElement }, { SallePlanningPDF }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('react'),
+        import('@/components/pdf/SallePlanningPDF'),
+      ])
+      const blob = await pdf(createElement(SallePlanningPDF as any, {
+        salleNom: salle.nom, poleNom: salle.pole?.nom ?? null,
+        planning: planningRows, totalCreneaux: rows.length,
+        dateGeneration: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }),
+        logoUrl: `${window.location.origin}/OFPPT_Logo.png`,
+      }) as any).toBlob()
+      const url = URL.createObjectURL(blob)
+      const win = window.open(url, '_blank')
+      if (!win) {
+        const a = document.createElement('a')
+        a.href = url; a.download = `EDT-${salle.nom}.pdf`
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000)
+    } catch (err) {
+      console.error('Erreur génération PDF salle', err)
+    } finally {
+      setPdfLoadingKey(null)
+    }
+  }
+
   return (
     <>
       {viewFormateur && (
@@ -645,15 +736,26 @@ function StandardView({
                 <h2 className="font-semibold">{salle.nom}</h2>
                 {groupe && <p className="text-xs text-muted-foreground">{groupe.nom}</p>}
               </div>
-              <Button
-                size="sm" variant="outline"
-                className={`h-7 text-xs gap-1.5 ${expanded ? 'bg-muted' : ''}`}
-                onClick={() => toggleRotation(salle.id)}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                Rotation Samedi
-                {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </Button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openSallePDF(salle, formateursSalle)}
+                  disabled={!!pdfLoadingKey}
+                  className="flex items-center gap-1 h-7 px-2.5 text-xs font-medium rounded-md border border-[#003D70]/30 bg-[#003D70]/5 text-[#003D70] hover:bg-[#003D70]/15 transition-all disabled:opacity-50"
+                  title="Télécharger le PDF emploi du temps de cette salle"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  {pdfLoadingKey === `salle-${salle.id}` ? 'Génération…' : 'PDF Salle'}
+                </button>
+                <Button
+                  size="sm" variant="outline"
+                  className={`h-7 text-xs gap-1.5 ${expanded ? 'bg-muted' : ''}`}
+                  onClick={() => toggleRotation(salle.id)}
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Rotation Samedi
+                  {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </Button>
+              </div>
             </div>
 
             {/* Bannière taux d'occupation */}
@@ -1093,6 +1195,36 @@ function StandardView({
           </div>
         )
       })}
+
+      {groupesFormation.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+            <Users className="h-3.5 w-3.5" />
+            Emplois du temps — Groupes de formation
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {groupesFormation.map(groupe => {
+              const seances = planning.filter(p => p.groupe_formation_id === groupe.id).length
+              const isLoading = pdfLoadingKey === `groupe-${groupe.id}`
+              return (
+                <button
+                  key={groupe.id}
+                  onClick={() => openGroupePDF(groupe)}
+                  disabled={!!pdfLoadingKey}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[#003D70]/30 bg-[#003D70]/5 text-[#003D70] hover:bg-[#003D70]/15 transition-all disabled:opacity-50"
+                  title={`EDT ${groupe.nom} — ${seances} séance(s)`}
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  {isLoading ? 'Génération…' : groupe.nom}
+                  {seances > 0 && !isLoading && (
+                    <span className="ml-1 text-[10px] bg-[#003D70]/10 px-1.5 py-0.5 rounded font-mono">{seances}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </>
   )
 }

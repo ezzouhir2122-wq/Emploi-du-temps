@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Users, Eye, X } from 'lucide-react'
+import { Users, Eye, X, FileDown } from 'lucide-react'
 import { StatutBadge } from '@/components/planning/StatutBadge'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -133,7 +133,9 @@ const MAX_SEANCES = 10
 
 const FP_MATIN:  StatutFixe[] = ['Matin FP S1', 'Matin FP S2']
 const FP_PM:     StatutFixe[] = ['Après-midi FP S1', 'Après-midi FP S2']
-const FAD_2H30:  StatutFixe[] = ['FAD Matin', 'FAD Après-midi']
+const FAD_2H30:  StatutFixe[] = ['FAD Matin S1', 'FAD Matin S2', 'FAD Après-midi S1', 'FAD Après-midi S2', 'FAD Matin', 'FAD Après-midi']
+const FAD_MAT:   StatutFixe[] = ['FAD Matin S1', 'FAD Matin S2', 'FAD Matin']
+const FAD_PM:    StatutFixe[] = ['FAD Après-midi S1', 'FAD Après-midi S2', 'FAD Après-midi']
 
 // ── Badge salle ───────────────────────────────────────────────
 
@@ -308,6 +310,7 @@ export function PlanningScenarioCClient({
 }: Props) {
   const [planning, setPlanning] = useState<PlanningFixe[]>(planningFixe)
   const [viewFormateur, setViewFormateur] = useState<{ formateur: Formateur; salleNom: string } | null>(null)
+  const [pdfLoadingKey, setPdfLoadingKey] = useState<string | null>(null)
   const supabase = createClient()
 
   // ── Helpers DB ────────────────────────────────────────────
@@ -390,15 +393,19 @@ export function PlanningScenarioCClient({
     isMatin: boolean,
     canAdd: boolean,
     weeklyPresentielDays: number,
+    blockS1 = false,
+    blockS2 = false,
   ) {
+    if (blockS1 && blockS2) return null
+
     const statuts = isMatin ? FP_MATIN : FP_PM
     const s1Statut: StatutFixe = isMatin ? 'Matin FP S1' : 'Après-midi FP S1'
     const s2Statut: StatutFixe = isMatin ? 'Matin FP S2' : 'Après-midi FP S2'
     const s1Time = isMatin ? '08h30–11h00' : '13h30–16h00'
     const s2Time = isMatin ? '11h00–13h30' : '16h00–18h30'
 
-    const s1Row = planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === s1Statut)
-    const s2Row = planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === s2Statut)
+    const s1Row = !blockS1 ? planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === s1Statut) : undefined
+    const s2Row = !blockS2 ? planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === s2Statut) : undefined
 
     const hasBlock = !!(s1Row || s2Row)
     const currentSalle = getCurrentSalle(formateur.id, jour, statuts)
@@ -408,18 +415,18 @@ export function PlanningScenarioCClient({
 
     if (!hasBlock && (!canAdd || weeklyPresentielDays >= 4 || !freeSalle)) return null
 
-    const headerBg = isMatin ? 'bg-blue-600' : 'bg-amber-500'
-    const blockBorder = isMatin ? 'border-blue-200' : 'border-amber-200'
-    const slotBg1 = isMatin ? 'bg-blue-50' : 'bg-amber-50'
-    const slotBg2 = isMatin ? 'bg-blue-50/60' : 'bg-amber-50/60'
-    const textColor = isMatin ? 'text-blue-700' : 'text-amber-700'
-    const textColor2 = isMatin ? 'text-blue-600' : 'text-amber-600'
+    const headerBg = isMatin ? 'bg-blue-600' : 'bg-green-600'
+    const blockBorder = isMatin ? 'border-blue-200' : 'border-green-200'
+    const slotBg1 = isMatin ? 'bg-blue-50' : 'bg-green-50'
+    const slotBg2 = isMatin ? 'bg-blue-50/60' : 'bg-green-50/60'
+    const textColor = isMatin ? 'text-blue-700' : 'text-green-700'
+    const textColor2 = isMatin ? 'text-blue-600' : 'text-green-600'
     const addCls1 = isMatin
       ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-dashed border-blue-300'
-      : 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-dashed border-amber-300'
+      : 'bg-green-50 text-green-600 hover:bg-green-100 border border-dashed border-green-300'
     const addCls2 = isMatin
       ? 'bg-blue-50/60 text-blue-500 hover:bg-blue-100 border border-dashed border-blue-200'
-      : 'bg-amber-50/60 text-amber-500 hover:bg-amber-100 border border-dashed border-amber-200'
+      : 'bg-green-50/60 text-green-500 hover:bg-green-100 border border-dashed border-green-200'
 
     // Salles alternatives pour switch
     const otherSalles = currentSalle
@@ -440,7 +447,7 @@ export function PlanningScenarioCClient({
         {/* Header */}
         <div className={`px-2 py-1 ${headerBg} flex items-center justify-between`}>
           <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-            {isMatin ? '☀ Matin FP' : '🌤 Après-midi FP'}
+            {isMatin ? '☀ Matin FP' : '🌿 Après-midi FP'}
           </span>
           {/* Badge salle + changement */}
           {currentSalle && (
@@ -468,7 +475,7 @@ export function PlanningScenarioCClient({
 
         <div className="p-1.5 flex flex-col gap-1">
           {/* S1 */}
-          {s1Row ? (
+          {!blockS1 && (s1Row ? (
             <div className={`px-2 py-1.5 ${slotBg1} rounded-sm`}>
               <div className="flex items-center justify-between">
                 <span className={`text-[9px] font-mono font-semibold ${textColor}`}>{s1Time}</span>
@@ -486,10 +493,10 @@ export function PlanningScenarioCClient({
               <span className="font-mono text-[10px]">{s1Time}</span>
               <SalleBadge nom={freeSalle.nom} color={sallesPool.indexOf(freeSalle) === 0 ? 'blue' : 'emerald'} />
             </button>
-          ))}
+          )))}
 
-          {/* S2 — visible après S1 */}
-          {(s1Row || s2Row) && (
+          {/* S2 — visible si S1 existe (FP ou FAD) ou si S2 existe déjà */}
+          {!blockS2 && (s1Row || s2Row || blockS1) && (
             s2Row ? (
               <div className={`px-2 py-1.5 ${slotBg2} rounded-sm`}>
                 <div className="flex items-center justify-between">
@@ -499,7 +506,7 @@ export function PlanningScenarioCClient({
                 </div>
                 {renderGroupePicker(s2Row)}
               </div>
-            ) : (s1Row && canAdd && currentSalle && (
+            ) : ((s1Row || blockS1) && canAdd && currentSalle && (
               <button
                 onClick={() => addSession(formateur.id, jour, s2Statut, currentSalle.id)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium opacity-60 hover:opacity-100 transition-all ${addCls2}`}
@@ -540,77 +547,100 @@ export function PlanningScenarioCClient({
 
   // ── Render FAD block ──────────────────────────────────────
 
-  function renderFADBlock(formateur: Formateur, jour: JourSemaine, canAdd: boolean) {
-    const fadM = planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Matin')
-    const fadP = planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Après-midi')
-    const fadH = planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD 1h')
+  function renderFADBlock(
+    formateur: Formateur, jour: JourSemaine, canAdd: boolean,
+    blockFadMatS1 = false, blockFadMatS2 = false,
+    blockFadPmS1  = false, blockFadPmS2  = false,
+  ) {
+    const rMatS1 = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Matin S1')
+    const rMatS2 = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Matin S2')
+    const rPmS1  = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Après-midi S1')
+    const rPmS2  = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Après-midi S2')
+    const fadH   = planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD 1h')
 
-    const weeklyFad2h30 = planning.filter(p =>
-      p.formateur_id === formateur.id && FAD_2H30.includes(p.statut)
-    ).length
-    const weeklyFADDays = JOURS_MON_VEN.filter(j =>
-      planning.some(p => p.formateur_id === formateur.id && p.jour_semaine === j && FAD_2H30.includes(p.statut))
-    ).length
+    const weeklyFad2h30 = new Set(
+      planning
+        .filter(p => p.formateur_id === formateur.id && FAD_2H30.includes(p.statut))
+        .map(p => `${p.jour_semaine}:${p.statut}`)
+    ).size
     const weeklyFad1h = planning.find(p => p.formateur_id === formateur.id && p.statut === 'FAD 1h')
 
-    const hasFADhere = !!(fadM || fadP || fadH)
-    const canAddFadS1 = weeklyFADDays === 0 && weeklyFad2h30 < 2 && !weeklyFad1h && canAdd
-    const canAddFadS2 = weeklyFad2h30 < 2 && !weeklyFad1h && canAdd
+    const hasFADhere = rMatS1.length > 0 || rMatS2.length > 0 || rPmS1.length > 0 || rPmS2.length > 0 || !!fadH
+    const base = weeklyFad2h30 < 2 && !weeklyFad1h && canAdd
+    const canNewMatS1 = base && !blockFadMatS1 && rMatS1.length === 0
+    const canNewMatS2 = base && !blockFadMatS2 && rMatS2.length === 0
+    const canNewPmS1  = base && !blockFadPmS1  && rPmS1.length === 0
+    const canNewPmS2  = base && !blockFadPmS2  && rPmS2.length === 0
     const canAdd1h = weeklyFad2h30 >= 2 && !weeklyFad1h && canAdd
-
     const showFad1hSlot = !!fadH || (canAdd1h && hasFADhere)
-    const showBlock = !!(hasFADhere || (canAddFadS1 && !fadM) || showFad1hSlot)
+
+    const showBlock = !!(hasFADhere || canNewMatS1 || canNewMatS2 || canNewPmS1 || canNewPmS2 || showFad1hSlot)
     if (!showBlock) return null
 
+    function renderFadSlot(
+      rows: typeof rMatS1,
+      statut: StatutFixe,
+      time: string,
+      bg: string, textCls: string, borderCls: string,
+      canNew: boolean,
+    ) {
+      if (rows.length > 0) {
+        return (
+          <div className={`px-2 py-1.5 ${bg} rounded-sm`}>
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className={`text-[9px] font-mono font-semibold ${textCls}`}>{time}</span>
+              <span className="text-[8px] text-teal-500">· {rows.length} grp</span>
+            </div>
+            {rows.map(row => (
+              <div key={row.id} className="flex items-center gap-1 mt-0.5">
+                <div className="flex-1">{renderGroupePicker(row)}</div>
+                <button onClick={() => removeSession(row.id)} className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
+              </div>
+            ))}
+            {rows.length < 3 && (
+              <button onClick={() => addSession(formateur.id, jour, statut, null)}
+                className={`w-full flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[9px] font-medium ${textCls} hover:bg-teal-100 border border-dashed ${borderCls} mt-1 transition-all`}>
+                <span>+</span><span>Fusionner un groupe</span>
+              </button>
+            )}
+          </div>
+        )
+      }
+      if (canNew) {
+        return (
+          <button onClick={() => addSession(formateur.id, jour, statut, null)}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium ${bg} ${textCls} hover:bg-teal-100 border border-dashed ${borderCls} opacity-70 hover:opacity-100 transition-all`}>
+            <span className="text-base leading-none">+</span>
+            <span className="font-mono text-[10px]">{time}</span>
+          </button>
+        )
+      }
+      return null
+    }
+
     return (
-      <div className="rounded-lg border-2 border-violet-200 overflow-hidden bg-white shadow-sm">
-        <div className="px-2 py-1 bg-violet-600 flex items-center justify-between">
+      <div className="rounded-lg border-2 border-teal-200 overflow-hidden bg-white shadow-sm">
+        <div className="px-2 py-1 bg-teal-600 flex items-center justify-between">
           <span className="text-[10px] font-bold text-white uppercase tracking-wider">📡 FAD</span>
-          <span className="text-[9px] text-violet-200 font-mono">{weeklyFADDays}/1 · {weeklyFad2h30}/2×2h30</span>
+          <span className="text-[9px] text-teal-200 font-mono">{weeklyFad2h30}/2 × 2h30</span>
         </div>
         <div className="p-1.5 flex flex-col gap-1">
-          {fadM ? (
-            <div className="px-2 py-1.5 bg-violet-50 rounded-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-semibold text-violet-700">S1 · 2h30</span>
-                <button onClick={() => removeSession(fadM.id)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
-              </div>
-              {renderGroupePicker(fadM)}
-            </div>
-          ) : canAddFadS1 && (
-            <button onClick={() => addSession(formateur.id, jour, 'FAD Matin', null)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium bg-violet-50 text-violet-600 hover:bg-violet-100 border border-dashed border-violet-300 opacity-70 hover:opacity-100 transition-all">
-              <span className="text-base leading-none">+</span><span>S1 · 2h30</span>
-            </button>
-          )}
-          {(fadM || fadP) && (
-            fadP ? (
-              <div className="px-2 py-1.5 bg-violet-50/60 rounded-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-semibold text-violet-600">S2 · 2h30</span>
-                  <button onClick={() => removeSession(fadP.id)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
-                </div>
-                {renderGroupePicker(fadP)}
-              </div>
-            ) : (fadM && canAddFadS2 && (
-              <button onClick={() => addSession(formateur.id, jour, 'FAD Après-midi', null)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium bg-violet-50/60 text-violet-500 hover:bg-violet-100 border border-dashed border-violet-200 opacity-70 hover:opacity-100 transition-all">
-                <span className="text-base leading-none">+</span><span>S2 · 2h30</span>
-              </button>
-            ))
-          )}
+          {renderFadSlot(rMatS1, 'FAD Matin S1',       '08h30–11h00', 'bg-teal-50',    'text-teal-700', 'border-teal-300', canNewMatS1)}
+          {renderFadSlot(rMatS2, 'FAD Matin S2',       '11h00–13h30', 'bg-teal-50/80', 'text-teal-600', 'border-teal-300', canNewMatS2)}
+          {renderFadSlot(rPmS1,  'FAD Après-midi S1',  '13h30–16h00', 'bg-teal-50/60', 'text-teal-600', 'border-teal-200', canNewPmS1)}
+          {renderFadSlot(rPmS2,  'FAD Après-midi S2',  '16h00–18h30', 'bg-teal-50/40', 'text-teal-500', 'border-teal-200', canNewPmS2)}
           {showFad1hSlot && (
             fadH ? (
-              <div className="px-2 py-1.5 bg-purple-50 rounded-sm border border-purple-200">
+              <div className="px-2 py-1.5 bg-teal-100 rounded-sm border border-teal-200">
                 <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-bold text-purple-700">Complément · 1h</span>
+                  <span className="text-[9px] font-bold text-teal-700">Complément · 1h</span>
                   <button onClick={() => removeSession(fadH.id)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
                 </div>
                 {renderGroupePicker(fadH)}
               </div>
             ) : (
               <button onClick={() => addSession(formateur.id, jour, 'FAD 1h', null)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-bold bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-300 shadow-sm transition-all">
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-bold bg-teal-50 text-teal-600 hover:bg-teal-100 border border-teal-300 shadow-sm transition-all">
                 <span className="text-base leading-none">+</span><span>Complément · 1h</span>
               </button>
             )
@@ -618,6 +648,95 @@ export function PlanningScenarioCClient({
         </div>
       </div>
     )
+  }
+
+  // ── Génération PDF ───────────────────────────────────────
+
+  const DUREE_PDF: Partial<Record<StatutFixe, number>> = {
+    'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
+    'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
+    'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
+  }
+
+  async function openGroupePDF(groupe: Groupe, poleNom: string) {
+    const key = `groupe-${groupe.id}`
+    if (pdfLoadingKey) return
+    setPdfLoadingKey(key)
+    try {
+      const rows = planning.filter(p => p.groupe_formation_id === groupe.id)
+      const planningRows = rows.map(p => ({
+        jour_semaine: p.jour_semaine,
+        statut: p.statut,
+        formateur_nom: formateurs.find(f => f.id === p.formateur_id)?.nom ?? null,
+      }))
+      const totalHeures = rows.reduce((acc, p) => acc + (DUREE_PDF[p.statut] ?? 0), 0)
+
+      const [{ pdf }, { createElement }, { GroupePlanningPDF }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('react'),
+        import('@/components/pdf/GroupePlanningPDF'),
+      ])
+      const blob = await pdf(createElement(GroupePlanningPDF as any, {
+        groupeNom: groupe.nom, poleNom,
+        planning: planningRows, totalSeances: rows.length, totalHeures,
+        dateGeneration: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }),
+        logoUrl: `${window.location.origin}/OFPPT_Logo.png`,
+      }) as any).toBlob()
+      const url = URL.createObjectURL(blob)
+      const win = window.open(url, '_blank')
+      if (!win) {
+        const a = document.createElement('a')
+        a.href = url; a.download = `EDT-${groupe.nom}.pdf`
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000)
+    } catch (err) {
+      console.error('Erreur génération PDF groupe', err)
+    } finally {
+      setPdfLoadingKey(null)
+    }
+  }
+
+  async function openSallePDF(salle: Salle, poleNom: string, formateurIds: string[]) {
+    const key = `salle-${salle.id}`
+    if (pdfLoadingKey) return
+    setPdfLoadingKey(key)
+    try {
+      const FP_STATUTS: StatutFixe[] = ['Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2']
+      const rows = planning.filter(p =>
+        p.salle_id === salle.id && FP_STATUTS.includes(p.statut)
+      )
+      const planningRows = rows.map(p => ({
+        jour_semaine: p.jour_semaine,
+        statut: p.statut,
+        formateur_nom: formateurs.find(f => f.id === p.formateur_id)?.nom ?? null,
+        groupe_nom: groupesFormation.find(g => g.id === p.groupe_formation_id)?.nom ?? null,
+      }))
+
+      const [{ pdf }, { createElement }, { SallePlanningPDF }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('react'),
+        import('@/components/pdf/SallePlanningPDF'),
+      ])
+      const blob = await pdf(createElement(SallePlanningPDF as any, {
+        salleNom: salle.nom, poleNom,
+        planning: planningRows, totalCreneaux: rows.length,
+        dateGeneration: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }),
+        logoUrl: `${window.location.origin}/OFPPT_Logo.png`,
+      }) as any).toBlob()
+      const url = URL.createObjectURL(blob)
+      const win = window.open(url, '_blank')
+      if (!win) {
+        const a = document.createElement('a')
+        a.href = url; a.download = `EDT-${salle.nom}.pdf`
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000)
+    } catch (err) {
+      console.error('Erreur génération PDF salle', err)
+    } finally {
+      setPdfLoadingKey(null)
+    }
   }
 
   // ── Render ─────────────────────────────────────────────────
@@ -678,7 +797,21 @@ export function PlanningScenarioCClient({
                 <span className="text-white font-semibold text-sm">{pole.nom}</span>
                 {pole.code && <span className="text-[9px] text-slate-300 font-mono">{pole.code}</span>}
               </div>
-              <span className="text-[10px] text-slate-300">{formateursDuPole.length} formateurs · {sallesDuPole.length} salles</span>
+              <div className="flex items-center gap-2">
+                {sallesDuPole.map(salle => (
+                  <button
+                    key={salle.id}
+                    onClick={() => openSallePDF(salle, pole.nom, formateurIds)}
+                    disabled={!!pdfLoadingKey}
+                    className="flex items-center gap-1 h-6 px-2 text-[10px] font-medium rounded border border-white/30 bg-white/10 text-white hover:bg-white/20 transition-all disabled:opacity-50"
+                    title={`PDF emploi du temps ${salle.nom}`}
+                  >
+                    <FileDown className="h-3 w-3" />
+                    {pdfLoadingKey === `salle-${salle.id}` ? '…' : salle.nom.replace('Salle ', 'S')}
+                  </button>
+                ))}
+                <span className="text-[10px] text-slate-300">{formateursDuPole.length} formateurs · {sallesDuPole.length} salles</span>
+              </div>
             </div>
 
             {sallesDuPole.length < 2 && (
@@ -718,10 +851,16 @@ export function PlanningScenarioCClient({
                 </thead>
                 <tbody className="divide-y">
                   {formateursDuPole.map(formateur => {
-                    const seances = planning.filter(p =>
+                    const fpSeances = planning.filter(p =>
                       p.formateur_id === formateur.id &&
-                      ['Matin FP S1','Matin FP S2','Après-midi FP S1','Après-midi FP S2','FAD Matin','FAD Après-midi','FAD 1h'].includes(p.statut)
+                      ['Matin FP S1','Matin FP S2','Après-midi FP S1','Après-midi FP S2'].includes(p.statut)
                     ).length
+                    const fadSeances = new Set(
+                      planning
+                        .filter(p => p.formateur_id === formateur.id && FAD_2H30.concat(['FAD 1h']).includes(p.statut))
+                        .map(p => `${p.jour_semaine}:${p.statut}`)
+                    ).size
+                    const seances = fpSeances + fadSeances
                     const canAdd = seances < MAX_SEANCES
 
                     const weeklyPresentielDays = JOURS_MON_VEN.filter(j =>
@@ -731,23 +870,14 @@ export function PlanningScenarioCClient({
                       )
                     ).length
 
-                    const weeklyFADDays = JOURS_MON_VEN.filter(j =>
-                      planning.some(p =>
-                        p.formateur_id === formateur.id && p.jour_semaine === j &&
-                        (p.statut === 'FAD Matin' || p.statut === 'FAD Après-midi')
-                      )
-                    ).length
-
-                    const totalHeures = planning
-                      .filter(p => p.formateur_id === formateur.id)
-                      .reduce((acc, p) => {
-                        const d: Partial<Record<string, number>> = {
-                          'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
-                          'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
-                          'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
-                        }
-                        return acc + (d[p.statut] ?? 0)
-                      }, 0)
+                    const fadHeures = new Set(
+                      planning
+                        .filter(p => p.formateur_id === formateur.id && FAD_2H30.includes(p.statut))
+                        .map(p => `${p.jour_semaine}:${p.statut}`)
+                    ).size * 2.5
+                    const fad1hHeures = new Set(planning.filter(p => p.formateur_id === formateur.id && p.statut === 'FAD 1h').map(p => p.jour_semaine)).size
+                    const fpHeures = planning.filter(p => p.formateur_id === formateur.id && ['Matin FP S1','Matin FP S2','Après-midi FP S1','Après-midi FP S2'].includes(p.statut)).length * 2.5
+                    const totalHeures = fpHeures + fadHeures + fad1hHeures
 
                     const salleNomPDF = sallesDuPole.length > 0
                       ? sallesDuPole.map(s => s.nom).join(' / ')
@@ -764,8 +894,8 @@ export function PlanningScenarioCClient({
                               <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyPresentielDays >= 4 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
                                 Prés. {weeklyPresentielDays}/4
                               </span>
-                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyFADDays >= 1 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>
-                                FAD {weeklyFADDays}/1
+                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${fadSeances >= 1 ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'}`}>
+                                FAD {fadSeances}/2
                               </span>
                             </div>
                             <button
@@ -810,18 +940,20 @@ export function PlanningScenarioCClient({
                             ).length +
                             (!planning.some(p => p.formateur_id === formateur.id && p.jour_semaine === 'Samedi') ? 1 : 0)
 
-                          const hasFADthisDay = planning.some(p =>
-                            p.formateur_id === formateur.id && p.jour_semaine === jour &&
-                            (p.statut === 'FAD Matin' || p.statut === 'FAD Après-midi' || p.statut === 'FAD 1h')
-                          )
-                          const hasFPthisDay = planning.some(p =>
-                            p.formateur_id === formateur.id && p.jour_semaine === jour &&
-                            ['Matin FP S1','Matin FP S2','Après-midi FP S1','Après-midi FP S2'].includes(p.statut)
-                          )
+                          const fid = formateur.id
+                          const hasF = (s: StatutFixe) => planning.some(p => p.formateur_id === fid && p.jour_semaine === jour && p.statut === s)
+                          const hasFadMatS1 = hasF('FAD Matin S1')
+                          const hasFadMatS2 = hasF('FAD Matin S2')
+                          const hasFadPmS1  = hasF('FAD Après-midi S1')
+                          const hasFadPmS2  = hasF('FAD Après-midi S2')
+                          const hasFpMatS1  = hasF('Matin FP S1')
+                          const hasFpMatS2  = hasF('Matin FP S2')
+                          const hasFpPmS1   = hasF('Après-midi FP S1')
+                          const hasFpPmS2   = hasF('Après-midi FP S2')
 
-                          const matinBlock  = !hasFADthisDay ? renderFPBlock(formateur, jour, sallesDuPole, true, canAdd, weeklyPresentielDays) : null
-                          const pmBlock     = !hasFADthisDay ? renderFPBlock(formateur, jour, sallesDuPole, false, canAdd, weeklyPresentielDays) : null
-                          const fadBlock    = !hasFPthisDay  ? renderFADBlock(formateur, jour, canAdd) : null
+                          const matinBlock = renderFPBlock(formateur, jour, sallesDuPole, true,  canAdd, weeklyPresentielDays, hasFadMatS1, hasFadMatS2)
+                          const pmBlock    = renderFPBlock(formateur, jour, sallesDuPole, false, canAdd, weeklyPresentielDays, hasFadPmS1, hasFadPmS2)
+                          const fadBlock   = renderFADBlock(formateur, jour, canAdd, hasFpMatS1, hasFpMatS2, hasFpPmS1, hasFpPmS2)
 
                           const reposExcedentaire = !isSamedi && isEmpty && weeklyReposCount > 1
 
@@ -874,6 +1006,37 @@ export function PlanningScenarioCClient({
                   <span className="text-green-500">○</span> salle libre
                   <span className="text-red-500 ml-2">✓</span> salle prise
                 </span>
+              </div>
+            )}
+
+            {/* ── EDT Groupes de formation ── */}
+            {groupesFormation.filter(g => g.pole_id === pole.id).length > 0 && (
+              <div className="border-t px-4 py-3">
+                <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                  <Users className="h-3 w-3" />
+                  EDT par groupe de formation
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {groupesFormation.filter(g => g.pole_id === pole.id).map(groupe => {
+                    const seances = planning.filter(p => p.groupe_formation_id === groupe.id).length
+                    const isLoading = pdfLoadingKey === `groupe-${groupe.id}`
+                    return (
+                      <button
+                        key={groupe.id}
+                        onClick={() => openGroupePDF(groupe, pole.nom)}
+                        disabled={!!pdfLoadingKey}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[#003D70]/30 bg-[#003D70]/5 text-[#003D70] hover:bg-[#003D70]/15 transition-all disabled:opacity-50"
+                        title={`EDT ${groupe.nom} — ${seances} séance(s)`}
+                      >
+                        <FileDown className="h-3.5 w-3.5" />
+                        {isLoading ? 'Génération…' : groupe.nom}
+                        {seances > 0 && !isLoading && (
+                          <span className="ml-1 text-[10px] bg-[#003D70]/10 px-1.5 py-0.5 rounded font-mono">{seances}</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </div>

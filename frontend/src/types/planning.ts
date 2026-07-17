@@ -6,9 +6,12 @@ export type JourSemaine = 'Lundi' | 'Mardi' | 'Mercredi' | 'Jeudi' | 'Vendredi' 
 export type StatutFixe =
   | 'Matin FP S1' | 'Matin FP S2'
   | 'Après-midi FP S1' | 'Après-midi FP S2'
-  | 'FAD Matin' | 'FAD Après-midi' | 'FAD 1h'
+  | 'FAD Matin S1' | 'FAD Matin S2'
+  | 'FAD Après-midi S1' | 'FAD Après-midi S2'
+  | 'FAD 1h'
   | 'Repos'
   // Legacy (rétrocompatibilité données existantes)
+  | 'FAD Matin' | 'FAD Après-midi'
   | 'Matin' | 'Après-midi' | 'Distance' | 'Distance Matin' | 'Distance Après-midi'
 
 export type StatutSamedi = 'Matin' | 'Après-midi' | 'Repos'
@@ -23,7 +26,9 @@ export const JOURS_SEMAINE: JourSemaine[] = [
 export const STATUTS_FIXES: StatutFixe[] = [
   'Matin FP S1', 'Matin FP S2',
   'Après-midi FP S1', 'Après-midi FP S2',
-  'FAD Matin', 'FAD Après-midi', 'FAD 1h',
+  'FAD Matin S1', 'FAD Matin S2',
+  'FAD Après-midi S1', 'FAD Après-midi S2',
+  'FAD 1h',
 ]
 
 // Statuts qui occupent physiquement la salle (compte dans les 24 sous-créneaux)
@@ -35,26 +40,35 @@ export const STATUTS_PHYSIQUES: StatutFixe[] = [
 // Statuts qui comptent dans la masse horaire du formateur
 export const STATUTS_TRAVAIL: StatutFixe[] = [
   'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
-  'FAD Matin', 'FAD Après-midi', 'FAD 1h',
+  'FAD Matin S1', 'FAD Matin S2', 'FAD Après-midi S1', 'FAD Après-midi S2',
+  'FAD 1h',
+  'FAD Matin', 'FAD Après-midi', // legacy
   'Matin', 'Après-midi', 'Distance', 'Distance Matin', 'Distance Après-midi', // legacy
 ]
 
 // Horaires / durées par statut
 export const STATUT_TIMES: Partial<Record<StatutFixe, string>> = {
-  'Matin FP S1':       '08h30–11h00',
-  'Matin FP S2':       '11h00–13h30',
-  'Après-midi FP S1':  '13h30–16h00',
-  'Après-midi FP S2':  '16h00–18h30',
-  'FAD Matin':         '2h30',
-  'FAD Après-midi':    '2h30',
-  'FAD 1h':            '1h',
+  'Matin FP S1':          '08h30–11h00',
+  'Matin FP S2':          '11h00–13h30',
+  'Après-midi FP S1':     '13h30–16h00',
+  'Après-midi FP S2':     '16h00–18h30',
+  'FAD Matin S1':         '08h30–11h00',
+  'FAD Matin S2':         '11h00–13h30',
+  'FAD Après-midi S1':    '13h30–16h00',
+  'FAD Après-midi S2':    '16h00–18h30',
+  'FAD 1h':               '1h',
+  'FAD Matin':            '2h30', // legacy
+  'FAD Après-midi':       '2h30', // legacy
 }
 
 // Durée en heures par statut (pour calcul masse horaire)
 export const DUREE_HEURES: Partial<Record<StatutFixe, number>> = {
   'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
   'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
-  'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
+  'FAD Matin S1': 2.5, 'FAD Matin S2': 2.5,
+  'FAD Après-midi S1': 2.5, 'FAD Après-midi S2': 2.5,
+  'FAD 1h': 1,
+  'FAD Matin': 2.5, 'FAD Après-midi': 2.5, // legacy
   'Matin': 5, 'Après-midi': 5, 'Distance': 5,
   'Distance Matin': 2.5, 'Distance Après-midi': 2.5,
 }
