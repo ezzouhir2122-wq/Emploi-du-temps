@@ -62,44 +62,15 @@ const POLE_COLORS = [
 // ── Modal de prévisualisation PDF ─────────────────────────────────────────────
 
 function PDFPreviewModal({
-  componentName, pdfProps, label, filename, onClose,
+  label, filename, blobUrl, loading, error, onClose,
 }: {
-  componentName: string
-  pdfProps: Record<string, unknown>
   label: string
   filename: string
+  blobUrl: string | null
+  loading: boolean
+  error: string | null
   onClose: () => void
 }) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null)
-  const [loading, setLoading]  = useState(true)
-  const [errMsg, setErrMsg]    = useState<string | null>(null)
-
-  // Génère le PDF blob au montage et crée une URL objet pour l'iframe
-  useEffect(() => {
-    let url = ''
-    async function generate() {
-      try {
-        const [{ pdf }, { createElement }, mod] = await Promise.all([
-          import('@react-pdf/renderer'),
-          import('react'),
-          import('@/components/pdf/VueMensuellePDF'),
-        ])
-        const Component = (mod as any)[componentName]
-        const blob = await pdf(createElement(Component as any, pdfProps) as any).toBlob()
-        url = URL.createObjectURL(blob)
-        setBlobUrl(url)
-      } catch (err) {
-        console.error('Erreur génération aperçu PDF', err)
-        setErrMsg('Erreur lors de la génération du document.')
-      } finally {
-        setLoading(false)
-      }
-    }
-    generate()
-    return () => { if (url) URL.revokeObjectURL(url) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   // Fermer avec Échap
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -110,11 +81,12 @@ function PDFPreviewModal({
   function handleDownload() {
     if (!blobUrl) return
     const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    a.href = blobUrl; a.download = filename
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  }
+
+  function handleOpenTab() {
+    if (blobUrl) window.open(blobUrl, '_blank')
   }
 
   return createPortal(
@@ -128,8 +100,22 @@ function PDFPreviewModal({
             <p className="text-xs font-bold leading-tight">Aperçu PDF</p>
             <p className="text-[10px] text-blue-200/70 leading-tight mt-0.5">{label}</p>
           </div>
+          {loading && (
+            <div className="flex items-center gap-1.5 text-blue-200/60 text-[10px]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Génération en cours…
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleOpenTab}
+            disabled={!blobUrl}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Layers className="h-3.5 w-3.5" />
+            Ouvrir dans un onglet
+          </button>
           <button
             onClick={handleDownload}
             disabled={!blobUrl}
@@ -140,7 +126,7 @@ function PDFPreviewModal({
           </button>
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-900/60 hover:bg-red-900/80 text-white text-xs font-semibold transition-colors"
           >
             <X className="h-3.5 w-3.5" />
             Fermer
@@ -149,17 +135,18 @@ function PDFPreviewModal({
       </div>
 
       {/* ── Zone prévisualisation ── */}
-      <div className="flex-1 overflow-hidden bg-slate-800">
+      <div className="flex-1 overflow-hidden bg-slate-800 relative">
         {loading && (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-white/70">
-            <Loader2 className="h-10 w-10 animate-spin text-blue-400" />
-            <p className="text-sm font-medium text-white/80">Génération du document PDF…</p>
-            <p className="text-xs text-white/40">Cela peut prendre 10 à 20 secondes</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white/70 z-10">
+            <Loader2 className="h-12 w-12 animate-spin text-blue-400" />
+            <p className="text-base font-semibold text-white/90">Génération du document PDF…</p>
+            <p className="text-sm text-white/50">Cela peut prendre 10 à 20 secondes</p>
           </div>
         )}
-        {errMsg && !loading && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-red-400 text-sm">{errMsg}</p>
+        {error && !loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10">
+            <p className="text-red-400 font-semibold text-sm">Erreur lors de la génération</p>
+            <p className="text-white/40 text-xs max-w-sm text-center">{error}</p>
           </div>
         )}
         {blobUrl && (
@@ -185,8 +172,8 @@ export function VueMensuelleClient({
   const [annee, setAnnee] = useState(today.getFullYear())
   const [mois, setMois] = useState(today.getMonth() + 1)
   const [previewState, setPreviewState] = useState<{
-    key: string; componentName: string; label: string; filename: string
-    props: Record<string, unknown>
+    label: string; filename: string
+    blobUrl: string | null; loading: boolean; error: string | null
   } | null>(null)
 
   function navMois(delta: number) {
@@ -279,8 +266,31 @@ export function VueMensuelleClient({
     }
   }
 
-  function openPreview(viewKey: string, componentName: string, label: string, filename: string) {
-    setPreviewState({ key: viewKey, componentName, label, filename, props: buildPDFProps() })
+  async function openPreview(_viewKey: string, componentName: string, label: string, filename: string) {
+    // 1. Ouvre le modal immédiatement en état "chargement"
+    setPreviewState({ label, filename, blobUrl: null, loading: true, error: null })
+    try {
+      // 2. Génère le blob PDF (lazy import)
+      const [{ pdf }, { createElement }, mod] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('react'),
+        import('@/components/pdf/VueMensuellePDF'),
+      ])
+      const Component = (mod as any)[componentName]
+      const blob = await pdf(createElement(Component as any, buildPDFProps()) as any).toBlob()
+      const url = URL.createObjectURL(blob)
+      // 3. Injecte l'URL dans le modal (seulement si le modal est encore ouvert)
+      setPreviewState(prev => {
+        if (!prev) { URL.revokeObjectURL(url); return null }
+        return { ...prev, blobUrl: url, loading: false }
+      })
+    } catch (err) {
+      console.error('Erreur génération PDF aperçu', err)
+      setPreviewState(prev => prev
+        ? { ...prev, loading: false, error: String(err) }
+        : null
+      )
+    }
   }
 
   // Définition des vues PDF disponibles
@@ -598,11 +608,15 @@ export function VueMensuelleClient({
       {/* ── Modal de prévisualisation PDF ── */}
       {previewState && (
         <PDFPreviewModal
-          componentName={previewState.componentName}
-          pdfProps={previewState.props}
           label={previewState.label}
           filename={previewState.filename}
-          onClose={() => setPreviewState(null)}
+          blobUrl={previewState.blobUrl}
+          loading={previewState.loading}
+          error={previewState.error}
+          onClose={() => {
+            if (previewState.blobUrl) URL.revokeObjectURL(previewState.blobUrl)
+            setPreviewState(null)
+          }}
         />
       )}
 
