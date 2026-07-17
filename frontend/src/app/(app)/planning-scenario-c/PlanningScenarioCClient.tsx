@@ -943,11 +943,11 @@ export function PlanningScenarioCClient({
 
                           const fid = formateur.id
                           const hasF = (s: StatutFixe) => planning.some(p => p.formateur_id === fid && p.jour_semaine === jour && p.statut === s)
-                          // les anciens statuts legacy bloquent les deux sous-créneaux S1 et S2
+                          // legacy 'FAD Matin'/'FAD Après-midi' ne bloque que S1 (affiché sous S1)
                           const hasFadMatS1 = hasF('FAD Matin S1') || hasF('FAD Matin')
-                          const hasFadMatS2 = hasF('FAD Matin S2') || hasF('FAD Matin')
+                          const hasFadMatS2 = hasF('FAD Matin S2')
                           const hasFadPmS1  = hasF('FAD Après-midi S1') || hasF('FAD Après-midi')
-                          const hasFadPmS2  = hasF('FAD Après-midi S2') || hasF('FAD Après-midi')
+                          const hasFadPmS2  = hasF('FAD Après-midi S2')
                           const hasFpMatS1  = hasF('Matin FP S1')
                           const hasFpMatS2  = hasF('Matin FP S2')
                           const hasFpPmS1   = hasF('Après-midi FP S1')
