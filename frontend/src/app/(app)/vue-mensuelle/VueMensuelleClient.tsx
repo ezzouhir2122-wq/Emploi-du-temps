@@ -461,7 +461,7 @@ export function VueMensuelleClient({
                 <thead>
                   <tr className="border-b bg-muted/40">
                     {/* Colonne formateur */}
-                    <th className="px-2 py-2 text-left font-semibold text-muted-foreground sticky left-0 bg-muted/40 z-10 min-w-[120px] max-w-[120px] border-r">
+                    <th className="px-2 py-2 text-left font-semibold text-muted-foreground sticky left-0 bg-muted/40 z-10 min-w-[88px] max-w-[88px] border-r">
                       Formateur
                     </th>
                     {/* Colonne stats hebdo */}
@@ -509,7 +509,7 @@ export function VueMensuelleClient({
                     return (
                       <tr key={formateur.id} className="hover:bg-muted/20 transition-colors">
                         {/* Formateur */}
-                        <td className="px-2 py-1.5 sticky left-0 bg-background border-r z-10 min-w-[120px] max-w-[120px]">
+                        <td className="px-2 py-1.5 sticky left-0 bg-background border-r z-10 min-w-[88px] max-w-[88px]">
                           <div className="font-semibold text-[10px] leading-tight truncate">{formateur.nom}</div>
                           {formateur.matricule && (
                             <div className="text-[8px] text-muted-foreground mt-0.5 truncate">#{formateur.matricule}</div>
