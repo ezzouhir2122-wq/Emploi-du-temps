@@ -552,9 +552,10 @@ export function PlanningScenarioCClient({
     blockFadMatS1 = false, blockFadMatS2 = false,
     blockFadPmS1  = false, blockFadPmS2  = false,
   ) {
-    const rMatS1 = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Matin S1')
+    // inclure les anciens statuts legacy pour rétrocompatibilité
+    const rMatS1 = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && (p.statut === 'FAD Matin S1' || p.statut === 'FAD Matin'))
     const rMatS2 = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Matin S2')
-    const rPmS1  = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Après-midi S1')
+    const rPmS1  = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && (p.statut === 'FAD Après-midi S1' || p.statut === 'FAD Après-midi'))
     const rPmS2  = planning.filter(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD Après-midi S2')
     const fadH   = planning.find(p => p.formateur_id === formateur.id && p.jour_semaine === jour && p.statut === 'FAD 1h')
 
@@ -942,10 +943,11 @@ export function PlanningScenarioCClient({
 
                           const fid = formateur.id
                           const hasF = (s: StatutFixe) => planning.some(p => p.formateur_id === fid && p.jour_semaine === jour && p.statut === s)
-                          const hasFadMatS1 = hasF('FAD Matin S1')
-                          const hasFadMatS2 = hasF('FAD Matin S2')
-                          const hasFadPmS1  = hasF('FAD Après-midi S1')
-                          const hasFadPmS2  = hasF('FAD Après-midi S2')
+                          // les anciens statuts legacy bloquent les deux sous-créneaux S1 et S2
+                          const hasFadMatS1 = hasF('FAD Matin S1') || hasF('FAD Matin')
+                          const hasFadMatS2 = hasF('FAD Matin S2') || hasF('FAD Matin')
+                          const hasFadPmS1  = hasF('FAD Après-midi S1') || hasF('FAD Après-midi')
+                          const hasFadPmS2  = hasF('FAD Après-midi S2') || hasF('FAD Après-midi')
                           const hasFpMatS1  = hasF('Matin FP S1')
                           const hasFpMatS2  = hasF('Matin FP S2')
                           const hasFpPmS1   = hasF('Après-midi FP S1')
