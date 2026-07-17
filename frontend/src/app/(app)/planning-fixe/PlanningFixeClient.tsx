@@ -808,21 +808,16 @@ function StandardView({
                     const seances     = countSeances(formateur.id)
                     const samediAuto  = monVenCount >= MAX_SEANCES
 
-                    // Comptage hebdomadaire FAD — toutes journées confondues
-                    const weeklyFad2h30 = planning.filter(p =>
-                      p.formateur_id === formateur.id &&
-                      (p.statut === 'FAD Matin' || p.statut === 'FAD Après-midi')
-                    ).length
+                    // Comptage hebdomadaire FAD — créneaux distincts (fusion = 1 créneau)
+                    const FAD_2H30_STATUTS = ['FAD Matin S1','FAD Matin S2','FAD Après-midi S1','FAD Après-midi S2','FAD Matin','FAD Après-midi']
+                    const weeklyFad2h30 = new Set(
+                      planning
+                        .filter(p => p.formateur_id === formateur.id && FAD_2H30_STATUTS.includes(p.statut))
+                        .map(p => `${p.jour_semaine}:${p.statut}`)
+                    ).size
                     const weeklyFad1hRow = planning.find(p =>
                       p.formateur_id === formateur.id && p.statut === 'FAD 1h'
                     )
-                    // Jours FAD distincts (1 seul autorisé par semaine)
-                    const weeklyFADDays = JOURS_MON_VEN.filter(j =>
-                      planning.some(p =>
-                        p.formateur_id === formateur.id && p.jour_semaine === j &&
-                        (p.statut === 'FAD Matin' || p.statut === 'FAD Après-midi')
-                      )
-                    ).length
                     // Jours présentiel (FP) — cible 4
                     const weeklyPresentielDays = JOURS_MON_VEN.filter(j =>
                       planning.some(p =>
@@ -848,8 +843,8 @@ function StandardView({
                               <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyPresentielDays >= 4 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
                                 Prés. {weeklyPresentielDays}/4
                               </span>
-                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyFADDays >= 1 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>
-                                FAD {weeklyFADDays}/1
+                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyFad2h30 >= 1 ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'}`}>
+                                FAD {weeklyFad2h30}/2
                               </span>
                             </div>
                             <button
@@ -926,28 +921,29 @@ function StandardView({
                           const ms2 = activeRows.find(r => r.statut === 'Matin FP S2')
                           const ps1 = activeRows.find(r => r.statut === 'Après-midi FP S1')
                           const ps2 = activeRows.find(r => r.statut === 'Après-midi FP S2')
-                          const fadM = activeRows.find(r => r.statut === 'FAD Matin')
-                          const fadP = activeRows.find(r => r.statut === 'FAD Après-midi')
-                          const fadH = activeRows.find(r => r.statut === 'FAD 1h')
+                          // FAD rows par sous-créneau (legacy inclus dans S1)
+                          const fadMatS1Rows = activeRows.filter(r => r.statut === 'FAD Matin S1' || r.statut === 'FAD Matin')
+                          const fadMatS2Rows = activeRows.filter(r => r.statut === 'FAD Matin S2')
+                          const fadPmS1Rows  = activeRows.filter(r => r.statut === 'FAD Après-midi S1' || r.statut === 'FAD Après-midi')
+                          const fadPmS2Rows  = activeRows.filter(r => r.statut === 'FAD Après-midi S2')
+                          const fadHRow      = activeRows.find(r => r.statut === 'FAD 1h')
+
+                          // FAD existant bloque le FP du même sous-créneau
+                          const blockFpMatS1 = fadMatS1Rows.length > 0
+                          const blockFpMatS2 = fadMatS2Rows.length > 0
+                          const blockFpPmS1  = fadPmS1Rows.length > 0
+                          const blockFpPmS2  = fadPmS2Rows.length > 0
 
                           const hasMatinBlock = !!(ms1 || ms2)
                           const hasPmBlock    = !!(ps1 || ps2)
-                          const hasFadAny     = !!(fadM || fadP || fadH)
-                          // Peut ajouter S2 FAD sur ce jour (S1 déjà là, quota semaine ok)
+                          const hasFadAny     = fadMatS1Rows.length > 0 || fadMatS2Rows.length > 0 || fadPmS1Rows.length > 0 || fadPmS2Rows.length > 0 || !!fadHRow
                           const canAddFad2h30 = weeklyFad2h30 < 2 && !weeklyFad1hRow && canAdd
-                          // Peut démarrer un NOUVEAU jour FAD (1 seul jour FAD par semaine)
-                          const canAddFadS1   = weeklyFADDays === 0 && canAddFad2h30
-                          // 1h FAD dispo uniquement après les 2×2h30 ET sur le jour FAD existant
                           const canAddFad1h   = weeklyFad2h30 >= 2 && !weeklyFad1hRow && canAdd
-                          // Cellule vide = Repos
-                          const isEmptyDay = activeRows.length === 0
-                          // Slot 1h : visible uniquement sur le jour qui a déjà des sessions FAD 2h30
-                          const showFad1hSlot = !!fadH || (canAddFad1h && hasFadAny)
-                          // Bloc FAD visible si : sessions FAD ce jour OU peut commencer FAD (jour libre) OU complément 1h
+                          const isEmptyDay    = activeRows.length === 0
+                          const showFad1hSlot = !!fadHRow || (canAddFad1h && hasFadAny)
                           const showFadBlock  = !isSamedi && (
-                            hasFadAny ||
-                            (canAddFadS1 && !hasMatinBlock && !hasPmBlock) ||
-                            showFad1hSlot
+                            hasFadAny || showFad1hSlot ||
+                            (canAddFad2h30 && (!blockFpMatS1 || !blockFpMatS2 || !blockFpPmS1 || !blockFpPmS2))
                           )
 
                           // Helper: groupe picker inline
@@ -1023,42 +1019,40 @@ function StandardView({
 
                                 {/* ── BLOC MATIN FP ── */}
                                 {/* Samedi : exclusivité salle désactivée (chaque formateur a son propre samedi en rotation) */}
-                                {(hasMatinBlock || ((!matinFPPris || isSamedi) && !hasFadAny && canAdd && weeklyPresentielDays < 4)) && (
+                                {(hasMatinBlock || ((!matinFPPris || isSamedi) && (!blockFpMatS1 || !blockFpMatS2) && canAdd && weeklyPresentielDays < 4)) && (
                                   <div className="rounded-lg border-2 border-blue-200 overflow-hidden bg-white shadow-sm">
                                     <div className="px-2 py-1 bg-blue-600 flex items-center gap-1.5">
                                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">☀ Matin FP</span>
                                     </div>
                                     <div className="p-1.5 flex flex-col gap-1">
-                                      {/* S1 */}
-                                      {ms1
+                                      {!blockFpMatS1 && (ms1
                                         ? renderFPSlotFilled(ms1, '08h30–11h00', 'bg-blue-50', 'text-blue-700', 'blue-300')
                                         : ((!matinFPPris || isSamedi) && canAdd && renderFPSlotAdd('Matin FP S1', '08h30–11h00', 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-dashed border-blue-300'))
-                                      }
-                                      {/* S2 — visible après S1 */}
-                                      {(ms1 || ms2) && (
+                                      )}
+                                      {!blockFpMatS2 && (ms1 || ms2 || blockFpMatS1) && (
                                         ms2
                                           ? renderFPSlotFilled(ms2, '11h00–13h30', 'bg-blue-50/60', 'text-blue-600', 'blue-200')
-                                          : ((!matinFPPris || isSamedi) && canAdd && ms1 && renderFPSlotAdd('Matin FP S2', '11h00–13h30', 'bg-blue-50/60 text-blue-500 hover:bg-blue-100 border border-dashed border-blue-200'))
+                                          : ((!matinFPPris || isSamedi) && canAdd && (ms1 || blockFpMatS1) && renderFPSlotAdd('Matin FP S2', '11h00–13h30', 'bg-blue-50/60 text-blue-500 hover:bg-blue-100 border border-dashed border-blue-200'))
                                       )}
                                     </div>
                                   </div>
                                 )}
 
                                 {/* ── BLOC APRÈS-MIDI FP ── */}
-                                {(hasPmBlock || ((!pmFPPris || isSamedi) && !hasFadAny && canAdd && weeklyPresentielDays < 4)) && (
-                                  <div className="rounded-lg border-2 border-amber-200 overflow-hidden bg-white shadow-sm">
-                                    <div className="px-2 py-1 bg-amber-500 flex items-center gap-1.5">
-                                      <span className="text-[10px] font-bold text-white uppercase tracking-wider">🌤 Après-midi FP</span>
+                                {(hasPmBlock || ((!pmFPPris || isSamedi) && (!blockFpPmS1 || !blockFpPmS2) && canAdd && weeklyPresentielDays < 4)) && (
+                                  <div className="rounded-lg border-2 border-green-200 overflow-hidden bg-white shadow-sm">
+                                    <div className="px-2 py-1 bg-green-600 flex items-center gap-1.5">
+                                      <span className="text-[10px] font-bold text-white uppercase tracking-wider">🌿 Après-midi FP</span>
                                     </div>
                                     <div className="p-1.5 flex flex-col gap-1">
-                                      {ps1
-                                        ? renderFPSlotFilled(ps1, '13h30–16h00', 'bg-amber-50', 'text-amber-700', 'amber-300')
-                                        : ((!pmFPPris || isSamedi) && canAdd && renderFPSlotAdd('Après-midi FP S1', '13h30–16h00', 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-dashed border-amber-300'))
-                                      }
-                                      {(ps1 || ps2) && (
+                                      {!blockFpPmS1 && (ps1
+                                        ? renderFPSlotFilled(ps1, '13h30–16h00', 'bg-green-50', 'text-green-700', 'green-300')
+                                        : ((!pmFPPris || isSamedi) && canAdd && renderFPSlotAdd('Après-midi FP S1', '13h30–16h00', 'bg-green-50 text-green-600 hover:bg-green-100 border border-dashed border-green-300'))
+                                      )}
+                                      {!blockFpPmS2 && (ps1 || ps2 || blockFpPmS1) && (
                                         ps2
-                                          ? renderFPSlotFilled(ps2, '16h00–18h30', 'bg-amber-50/60', 'text-amber-600', 'amber-200')
-                                          : ((!pmFPPris || isSamedi) && canAdd && ps1 && renderFPSlotAdd('Après-midi FP S2', '16h00–18h30', 'bg-amber-50/60 text-amber-500 hover:bg-amber-100 border border-dashed border-amber-200'))
+                                          ? renderFPSlotFilled(ps2, '16h00–18h30', 'bg-green-50/60', 'text-green-600', 'green-200')
+                                          : ((!pmFPPris || isSamedi) && canAdd && (ps1 || blockFpPmS1) && renderFPSlotAdd('Après-midi FP S2', '16h00–18h30', 'bg-green-50/60 text-green-500 hover:bg-green-100 border border-dashed border-green-200'))
                                       )}
                                     </div>
                                   </div>
@@ -1066,64 +1060,63 @@ function StandardView({
 
                                 {/* ── BLOC FAD ── */}
                                 {showFadBlock && (
-                                  <div className="rounded-lg border-2 border-violet-200 overflow-hidden bg-white shadow-sm">
-                                    <div className="px-2 py-1 bg-violet-600 flex items-center justify-between">
+                                  <div className="rounded-lg border-2 border-teal-200 overflow-hidden bg-white shadow-sm">
+                                    <div className="px-2 py-1 bg-teal-600 flex items-center justify-between">
                                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">📡 FAD</span>
-                                      <span className="text-[9px] text-violet-200 font-mono">
-                                        {weeklyFADDays}/1 jour · {weeklyFad2h30}/2 × 2h30{weeklyFad1hRow ? ' · +1h' : ''}
-                                      </span>
+                                      <span className="text-[9px] text-teal-200 font-mono">{weeklyFad2h30}/2 × 2h30</span>
                                     </div>
                                     <div className="p-1.5 flex flex-col gap-1">
-                                      {/* S1 — 2h30 */}
-                                      {fadM ? (
-                                        <div className="px-2 py-1.5 bg-violet-50 rounded-sm">
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-[9px] font-semibold text-violet-700">S1 · 2h30</span>
-                                            <button onClick={() => onRemoveSubSession(fadM.id)}
-                                              className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
-                                          </div>
-                                          {renderGroupePicker(fadM, 'border-violet-300 bg-white/80 text-violet-700')}
-                                        </div>
-                                      ) : (canAddFadS1 && (
-                                        <button onClick={() => onAddSubSession(formateur.id, jour, 'FAD Matin')}
-                                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium bg-violet-50 text-violet-600 hover:bg-violet-100 border border-dashed border-violet-300 transition-all opacity-70 hover:opacity-100">
-                                          <span className="text-base leading-none">+</span><span>S1 · 2h30</span>
-                                        </button>
-                                      ))}
-
-                                      {/* S2 — 2h30, disponible après S1 */}
-                                      {(fadM || fadP) && (
-                                        fadP ? (
-                                          <div className="px-2 py-1.5 bg-violet-50/60 rounded-sm">
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-[9px] font-semibold text-violet-600">S2 · 2h30</span>
-                                              <button onClick={() => onRemoveSubSession(fadP.id)}
-                                                className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
+                                      {/* Helper inline pour chaque sous-créneau FAD */}
+                                      {([
+                                        { rows: fadMatS1Rows, statut: 'FAD Matin S1' as StatutFixe,      time: '08h30–11h00', bg: 'bg-teal-50',    txt: 'text-teal-700', brd: 'border-teal-300', blocked: blockFpMatS1 },
+                                        { rows: fadMatS2Rows, statut: 'FAD Matin S2' as StatutFixe,      time: '11h00–13h30', bg: 'bg-teal-50/80', txt: 'text-teal-600', brd: 'border-teal-300', blocked: blockFpMatS2 },
+                                        { rows: fadPmS1Rows,  statut: 'FAD Après-midi S1' as StatutFixe, time: '13h30–16h00', bg: 'bg-teal-50/60', txt: 'text-teal-600', brd: 'border-teal-200', blocked: blockFpPmS1  },
+                                        { rows: fadPmS2Rows,  statut: 'FAD Après-midi S2' as StatutFixe, time: '16h00–18h30', bg: 'bg-teal-50/40', txt: 'text-teal-500', brd: 'border-teal-200', blocked: blockFpPmS2  },
+                                      ] as const).map(({ rows, statut, time, bg, txt, brd, blocked }) => {
+                                        if (blocked) return null
+                                        if (rows.length > 0) return (
+                                          <div key={statut} className={`px-2 py-1.5 ${bg} rounded-sm`}>
+                                            <div className="flex items-center gap-1 mb-0.5">
+                                              <span className={`text-[9px] font-mono font-semibold ${txt}`}>{time}</span>
+                                              <span className="text-[8px] text-teal-500">· {rows.length} grp</span>
                                             </div>
-                                            {renderGroupePicker(fadP, 'border-violet-200 bg-white/80 text-violet-600')}
+                                            {rows.map(row => (
+                                              <div key={row.id} className="flex items-center gap-1 mt-0.5">
+                                                <div className="flex-1">{renderGroupePicker(row, `border-teal-300 bg-white/80 ${txt}`)}</div>
+                                                <button onClick={() => onRemoveSubSession(row.id)} className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
+                                              </div>
+                                            ))}
+                                            {rows.length < 3 && (
+                                              <button onClick={() => onAddSubSession(formateur.id, jour, statut)}
+                                                className={`w-full flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[9px] font-medium ${txt} hover:bg-teal-100 border border-dashed ${brd} mt-1 transition-all`}>
+                                                <span>+</span><span>Fusionner un groupe</span>
+                                              </button>
+                                            )}
                                           </div>
-                                        ) : (fadM && canAddFad2h30 && (
-                                          <button onClick={() => onAddSubSession(formateur.id, jour, 'FAD Après-midi')}
-                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium bg-violet-50/60 text-violet-500 hover:bg-violet-100 border border-dashed border-violet-200 transition-all opacity-70 hover:opacity-100">
-                                            <span className="text-base leading-none">+</span><span>S2 · 2h30</span>
+                                        )
+                                        if (canAddFad2h30) return (
+                                          <button key={statut} onClick={() => onAddSubSession(formateur.id, jour, statut)}
+                                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium ${bg} ${txt} hover:bg-teal-100 border border-dashed ${brd} opacity-70 hover:opacity-100 transition-all`}>
+                                            <span className="text-base leading-none">+</span>
+                                            <span className="font-mono text-[10px]">{time}</span>
                                           </button>
-                                        ))
-                                      )}
+                                        )
+                                        return null
+                                      })}
 
-                                      {/* 1h complément — après 2 séances 2h30 sur la semaine */}
+                                      {/* Complément 1h */}
                                       {showFad1hSlot && (
-                                        fadH ? (
-                                          <div className="px-2 py-1.5 bg-purple-50 rounded-sm border border-purple-200">
+                                        fadHRow ? (
+                                          <div className="px-2 py-1.5 bg-teal-100 rounded-sm border border-teal-200">
                                             <div className="flex items-center justify-between">
-                                              <span className="text-[9px] font-bold text-purple-700">Complément · 1h</span>
-                                              <button onClick={() => onRemoveSubSession(fadH.id)}
-                                                className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
+                                              <span className="text-[9px] font-bold text-teal-700">Complément · 1h</span>
+                                              <button onClick={() => onRemoveSubSession(fadHRow.id)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
                                             </div>
-                                            {renderGroupePicker(fadH, 'border-purple-300 bg-white/80 text-purple-700')}
+                                            {renderGroupePicker(fadHRow, 'border-teal-300 bg-white/80 text-teal-700')}
                                           </div>
                                         ) : (
                                           <button onClick={() => onAddSubSession(formateur.id, jour, 'FAD 1h')}
-                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-bold bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-300 transition-all shadow-sm">
+                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-bold bg-teal-50 text-teal-600 hover:bg-teal-100 border border-teal-300 transition-all shadow-sm">
                                             <span className="text-base leading-none">+</span><span>Complément · 1h</span>
                                           </button>
                                         )
