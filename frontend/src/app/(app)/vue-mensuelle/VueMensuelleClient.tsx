@@ -70,74 +70,72 @@ function PDFPreviewModal({
   filename: string
   onClose: () => void
 }) {
-  const [PDFViewerComp, setPDFViewerComp] = useState<any>(null)
-  const [PDFDocComp, setPDFDocComp]       = useState<any>(null)
-  const [downloading, setDownloading]     = useState(false)
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [loading, setLoading]  = useState(true)
+  const [errMsg, setErrMsg]    = useState<string | null>(null)
 
+  // Génère le PDF blob au montage et crée une URL objet pour l'iframe
   useEffect(() => {
-    async function load() {
-      const [{ PDFViewer }, mod] = await Promise.all([
-        import('@react-pdf/renderer'),
-        import('@/components/pdf/VueMensuellePDF'),
-      ])
-      setPDFViewerComp(() => PDFViewer)
-      setPDFDocComp(() => (mod as any)[componentName])
+    let url = ''
+    async function generate() {
+      try {
+        const [{ pdf }, { createElement }, mod] = await Promise.all([
+          import('@react-pdf/renderer'),
+          import('react'),
+          import('@/components/pdf/VueMensuellePDF'),
+        ])
+        const Component = (mod as any)[componentName]
+        const blob = await pdf(createElement(Component as any, pdfProps) as any).toBlob()
+        url = URL.createObjectURL(blob)
+        setBlobUrl(url)
+      } catch (err) {
+        console.error('Erreur génération aperçu PDF', err)
+        setErrMsg('Erreur lors de la génération du document.')
+      } finally {
+        setLoading(false)
+      }
     }
-    load()
-  }, [componentName])
+    generate()
+    return () => { if (url) URL.revokeObjectURL(url) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Fermer avec Escape
+  // Fermer avec Échap
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
-  async function handleDownload() {
-    setDownloading(true)
-    try {
-      const [{ pdf }, { createElement }, mod] = await Promise.all([
-        import('@react-pdf/renderer'),
-        import('react'),
-        import('@/components/pdf/VueMensuellePDF'),
-      ])
-      const Component = (mod as any)[componentName]
-      const blob = await pdf(createElement(Component as any, pdfProps) as any).toBlob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = filename
-      document.body.appendChild(a); a.click()
-      document.body.removeChild(a); URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error('Erreur téléchargement PDF', err)
-    } finally {
-      setDownloading(false)
-    }
+  function handleDownload() {
+    if (!blobUrl) return
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
-  const ready = PDFViewerComp && PDFDocComp
-
-  // Portal → injecté dans document.body pour contourner overflow:hidden du layout
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex flex-col" style={{ background: 'rgba(0,0,0,0.88)' }}>
-      {/* Barre du haut */}
+    <div className="fixed inset-0 z-[9999] flex flex-col" style={{ background: 'rgba(0,0,0,0.90)' }}>
+
+      {/* ── Barre du haut ── */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-[#003D70] text-white shrink-0 shadow-lg">
         <div className="flex items-center gap-3">
           <FileDown className="h-4 w-4 text-blue-300 shrink-0" />
           <div>
             <p className="text-xs font-bold leading-tight">Aperçu PDF</p>
-            <p className="text-[10px] text-blue-200/80 leading-tight">{label}</p>
+            <p className="text-[10px] text-blue-200/70 leading-tight mt-0.5">{label}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleDownload}
-            disabled={downloading || !ready}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-wait"
+            disabled={!blobUrl}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {downloading
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <FileDown className="h-3.5 w-3.5" />}
+            <FileDown className="h-3.5 w-3.5" />
             Télécharger PDF
           </button>
           <button
@@ -150,20 +148,29 @@ function PDFPreviewModal({
         </div>
       </div>
 
-      {/* Zone de prévisualisation */}
-      <div className="flex-1 overflow-hidden bg-slate-700">
-        {ready ? (
-          <PDFViewerComp style={{ width: '100%', height: '100%', border: 'none' }} showToolbar={false}>
-            <PDFDocComp {...pdfProps} />
-          </PDFViewerComp>
-        ) : (
+      {/* ── Zone prévisualisation ── */}
+      <div className="flex-1 overflow-hidden bg-slate-800">
+        {loading && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-white/70">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
-            <span className="text-sm font-medium">Génération de l'aperçu en cours…</span>
-            <span className="text-xs text-white/40">Cela peut prendre quelques secondes</span>
+            <Loader2 className="h-10 w-10 animate-spin text-blue-400" />
+            <p className="text-sm font-medium text-white/80">Génération du document PDF…</p>
+            <p className="text-xs text-white/40">Cela peut prendre 10 à 20 secondes</p>
           </div>
         )}
+        {errMsg && !loading && (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-red-400 text-sm">{errMsg}</p>
+          </div>
+        )}
+        {blobUrl && (
+          <iframe
+            src={blobUrl}
+            className="w-full h-full border-none block"
+            title={`Aperçu — ${label}`}
+          />
+        )}
       </div>
+
     </div>,
     document.body
   )
