@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
-import { CalendarRange, ChevronLeft, ChevronRight, FileDown, Loader2, Building2, Users, LayoutDashboard, BarChart3, BookOpen, Layers } from 'lucide-react'
+import { CalendarRange, ChevronLeft, ChevronRight, FileDown, Loader2, Building2, Users, LayoutDashboard, BarChart3, BookOpen, Layers, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getMoisCycle, getJoursDuMois, parseISODate, toISODateString, dayNumberToLabel } from '@/lib/rotation'
 import { cn } from '@/lib/utils'
@@ -58,6 +58,114 @@ const POLE_COLORS = [
   { bg: 'bg-[#164E63]', border: 'border-[#0891B2]', badge: 'bg-cyan-100 text-cyan-700' },
 ]
 
+// ── Modal de prévisualisation PDF ─────────────────────────────────────────────
+
+function PDFPreviewModal({
+  componentName, pdfProps, label, filename, onClose,
+}: {
+  componentName: string
+  pdfProps: Record<string, unknown>
+  label: string
+  filename: string
+  onClose: () => void
+}) {
+  const [PDFViewerComp, setPDFViewerComp] = useState<any>(null)
+  const [PDFDocComp, setPDFDocComp]       = useState<any>(null)
+  const [downloading, setDownloading]     = useState(false)
+
+  useEffect(() => {
+    async function load() {
+      const [{ PDFViewer }, mod] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('@/components/pdf/VueMensuellePDF'),
+      ])
+      setPDFViewerComp(() => PDFViewer)
+      setPDFDocComp(() => (mod as any)[componentName])
+    }
+    load()
+  }, [componentName])
+
+  // Fermer avec Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  async function handleDownload() {
+    setDownloading(true)
+    try {
+      const [{ pdf }, { createElement }, mod] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('react'),
+        import('@/components/pdf/VueMensuellePDF'),
+      ])
+      const Component = (mod as any)[componentName]
+      const blob = await pdf(createElement(Component as any, pdfProps) as any).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename
+      document.body.appendChild(a); a.click()
+      document.body.removeChild(a); URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Erreur téléchargement PDF', err)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const ready = PDFViewerComp && PDFDocComp
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgba(0,0,0,0.88)' }}>
+      {/* Barre du haut */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#003D70] text-white shrink-0 shadow-lg">
+        <div className="flex items-center gap-3">
+          <FileDown className="h-4 w-4 text-blue-300 shrink-0" />
+          <div>
+            <p className="text-xs font-bold leading-tight">Aperçu PDF</p>
+            <p className="text-[10px] text-blue-200/80 leading-tight">{label}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownload}
+            disabled={downloading || !ready}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-wait"
+          >
+            {downloading
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <FileDown className="h-3.5 w-3.5" />}
+            Télécharger PDF
+          </button>
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+            Fermer
+          </button>
+        </div>
+      </div>
+
+      {/* Zone de prévisualisation */}
+      <div className="flex-1 overflow-hidden bg-slate-700">
+        {ready ? (
+          <PDFViewerComp style={{ width: '100%', height: '100%', border: 'none' }} showToolbar={false}>
+            <PDFDocComp {...pdfProps} />
+          </PDFViewerComp>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-white/70">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
+            <span className="text-sm font-medium">Génération de l'aperçu en cours…</span>
+            <span className="text-xs text-white/40">Cela peut prendre quelques secondes</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 export function VueMensuelleClient({
@@ -66,7 +174,10 @@ export function VueMensuelleClient({
   const today = new Date()
   const [annee, setAnnee] = useState(today.getFullYear())
   const [mois, setMois] = useState(today.getMonth() + 1)
-  const [pdfLoading, setPdfLoading] = useState<string | null>(null)
+  const [previewState, setPreviewState] = useState<{
+    key: string; componentName: string; label: string; filename: string
+    props: Record<string, unknown>
+  } | null>(null)
 
   function navMois(delta: number) {
     let m = mois + delta, a = annee
@@ -128,13 +239,19 @@ export function VueMensuelleClient({
       annee, mois,
       poles: poles.map(p => ({ id: p.id, nom: p.nom, code: p.code })),
       salles: salles.map(s => ({ id: s.id, nom: s.nom, pole_id: s.pole_id })),
-      formateurs: formateurs.map(f => ({
-        id: f.id, nom: f.nom, matricule: f.matricule,
-        pole_id: f.pole_id,
-        pole_nom: (f as any).pole?.nom ?? poles.find(p => p.id === f.pole_id)?.nom ?? null,
-        salle_nom: salles.find(s => s.pole_id === f.pole_id)?.nom ?? null,
-        groupe_id: f.groupe_id,
-      })),
+      formateurs: formateurs.map(f => {
+        // Remonter groupe_id → salle_id correct (salle technique liée au formateur)
+        const groupeTech = groupes.find(g => g.id === f.groupe_id && g.salle_id != null)
+        const salleId = groupeTech?.salle_id ?? salles.find(s => s.pole_id === f.pole_id)?.id ?? null
+        return {
+          id: f.id, nom: f.nom, matricule: f.matricule,
+          pole_id: f.pole_id,
+          pole_nom: (f as any).pole?.nom ?? poles.find(p => p.id === f.pole_id)?.nom ?? null,
+          salle_id: salleId,
+          salle_nom: salles.find(s => s.id === salleId)?.nom ?? null,
+          groupe_id: f.groupe_id,
+        }
+      }),
       groupes: groupes.map(g => ({ id: g.id, nom: g.nom, pole_id: g.pole_id, salle_id: g.salle_id })),
       planningFixe: planningFixe.map(p => ({
         formateur_id: p.formateur_id, jour_semaine: p.jour_semaine,
@@ -152,29 +269,8 @@ export function VueMensuelleClient({
     }
   }
 
-  async function downloadPDF(viewKey: string, componentName: string, filename: string) {
-    setPdfLoading(viewKey)
-    try {
-      const [{ pdf }, { createElement }, mod] = await Promise.all([
-        import('@react-pdf/renderer'),
-        import('react'),
-        import('@/components/pdf/VueMensuellePDF'),
-      ])
-      const Component = (mod as any)[componentName]
-      const blob = await pdf(createElement(Component as any, buildPDFProps()) as any).toBlob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error('Erreur génération PDF', err)
-    } finally {
-      setPdfLoading(null)
-    }
+  function openPreview(viewKey: string, componentName: string, label: string, filename: string) {
+    setPreviewState({ key: viewKey, componentName, label, filename, props: buildPDFProps() })
   }
 
   // Définition des vues PDF disponibles
@@ -266,22 +362,16 @@ export function VueMensuelleClient({
         <div className="flex flex-wrap gap-2">
           {PDF_VIEWS.map(view => {
             const Icon = view.icon
-            const isLoading = pdfLoading === view.key
             return (
               <button
                 key={view.key}
-                onClick={() => downloadPDF(view.key, view.component, view.filename)}
-                disabled={pdfLoading !== null}
+                onClick={() => openPreview(view.key, view.component, view.label, view.filename)}
                 className={`
                   flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold
-                  transition-all duration-150 disabled:opacity-50 disabled:cursor-wait
-                  shadow-sm ${view.color}
+                  transition-all duration-150 shadow-sm ${view.color}
                 `}
               >
-                {isLoading
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                  : <Icon className="h-3.5 w-3.5 shrink-0" />
-                }
+                <Icon className="h-3.5 w-3.5 shrink-0" />
                 <div className="text-left">
                   <div className="leading-tight">{view.label}</div>
                   <div className="text-[9px] opacity-75 font-normal leading-tight mt-0.5 hidden sm:block">
@@ -292,12 +382,6 @@ export function VueMensuelleClient({
             )
           })}
         </div>
-        {pdfLoading && (
-          <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-1.5">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Génération en cours… cela peut prendre quelques secondes.
-          </div>
-        )}
       </div>
 
       {/* ── Légende ── */}
@@ -393,7 +477,11 @@ export function VueMensuelleClient({
                 <tbody className="divide-y">
                   {formateursDuPole.map(formateur => {
                     const { heures, seances, fpDays, fadDays } = statsFormateur(formateur.id)
-                    const salleF = sallesDuPole[0] ?? null
+                    // Trouver la salle propre à ce formateur via son groupe technique
+                    const groupeTech = groupesTech.find(g => g.id === formateur.groupe_id)
+                    const salleF = groupeTech?.salle_id
+                      ? (salles.find(s => s.id === groupeTech.salle_id) ?? sallesDuPole[0] ?? null)
+                      : sallesDuPole[0] ?? null
                     const isPct100 = seances >= 10
 
                     return (
@@ -496,6 +584,17 @@ export function VueMensuelleClient({
           </div>
         )
       })}
+
+      {/* ── Modal de prévisualisation PDF ── */}
+      {previewState && (
+        <PDFPreviewModal
+          componentName={previewState.componentName}
+          pdfProps={previewState.props}
+          label={previewState.label}
+          filename={previewState.filename}
+          onClose={() => setPreviewState(null)}
+        />
+      )}
 
       {/* Formateurs sans pôle */}
       {formateurs.filter(f => !f.pole_id).length > 0 && (
