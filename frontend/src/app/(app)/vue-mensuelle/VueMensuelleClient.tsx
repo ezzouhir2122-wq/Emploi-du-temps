@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, useMemo } from 'react'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
-import { CalendarRange, ChevronLeft, ChevronRight, FileDown, Loader2, Building2, Users, LayoutDashboard, BarChart3, BookOpen, Layers, X } from 'lucide-react'
+import { CalendarRange, ChevronLeft, ChevronRight, FileDown, Loader2, Building2, Users, LayoutDashboard, BookOpen, Layers } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getMoisCycle, getJoursDuMois, parseISODate, toISODateString, dayNumberToLabel } from '@/lib/rotation'
 import { cn } from '@/lib/utils'
@@ -59,86 +58,6 @@ const POLE_COLORS = [
   { bg: 'bg-[#164E63]', border: 'border-[#0891B2]', badge: 'bg-cyan-100 text-cyan-700' },
 ]
 
-// ── Modal de prévisualisation PDF ─────────────────────────────────────────────
-
-// Composant pur — pas de portal dedans, pas d'async
-function PDFPreviewModal({
-  label, filename, blobUrl, loading, error, onClose,
-}: {
-  label: string; filename: string
-  blobUrl: string | null; loading: boolean; error: string | null; onClose: () => void
-}) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', h)
-    return () => document.removeEventListener('keydown', h)
-  }, [onClose])
-
-  const download = () => {
-    if (!blobUrl) return
-    const a = document.createElement('a')
-    a.href = blobUrl; a.download = filename
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
-  }
-
-  return (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      zIndex: 9999, display: 'flex', flexDirection: 'column',
-      background: 'rgba(0,0,0,0.92)',
-    }}>
-      {/* Barre */}
-      <div style={{ background: '#003D70', flexShrink: 0 }}
-        className="flex items-center justify-between px-4 py-3 shadow-xl">
-        <div className="flex items-center gap-3">
-          <FileDown className="h-4 w-4 text-blue-300" />
-          <div>
-            <p className="text-xs font-bold text-white">Aperçu PDF — {label}</p>
-            {loading && <p className="text-[10px] text-blue-200/60 flex items-center gap-1 mt-0.5">
-              <Loader2 className="h-2.5 w-2.5 animate-spin inline" /> Génération en cours…
-            </p>}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => blobUrl && window.open(blobUrl, '_blank')} disabled={!blobUrl}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-white text-xs font-semibold disabled:opacity-40">
-            <Layers className="h-3.5 w-3.5" /> Ouvrir onglet
-          </button>
-          <button onClick={download} disabled={!blobUrl}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-40">
-            <FileDown className="h-3.5 w-3.5" /> Télécharger
-          </button>
-          <button onClick={onClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-red-800/70 hover:bg-red-700 text-white text-xs font-semibold">
-            <X className="h-3.5 w-3.5" /> Fermer
-          </button>
-        </div>
-      </div>
-
-      {/* Contenu */}
-      <div style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#1E293B' }}>
-        {loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-            <Loader2 className="h-14 w-14 animate-spin text-blue-400" />
-            <p className="text-white font-semibold">Génération du PDF en cours…</p>
-            <p className="text-white/40 text-sm">10 à 20 secondes</p>
-          </div>
-        )}
-        {error && !loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <p className="text-red-400 font-bold">Erreur de génération</p>
-            <p className="text-white/40 text-xs max-w-xs text-center">{error}</p>
-          </div>
-        )}
-        {blobUrl && !loading && (
-          <iframe src={blobUrl} style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-            title={label} />
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 export function VueMensuelleClient({
@@ -147,39 +66,7 @@ export function VueMensuelleClient({
   const today = new Date()
   const [annee, setAnnee] = useState(today.getFullYear())
   const [mois, setMois] = useState(today.getMonth() + 1)
-  // État prévisualisation PDF
-  const [previewState, setPreviewState] = useState<{
-    componentName: string; label: string; filename: string
-    pdfProps: Record<string, unknown>
-    blobUrl: string | null; loading: boolean; error: string | null
-  } | null>(null)
-
-  // Génération PDF déclenchée par useEffect (après le rendu du modal)
-  useEffect(() => {
-    if (!previewState?.loading || previewState.blobUrl !== null) return
-    let active = true
-    ;(async () => {
-      try {
-        const [{ pdf }, { createElement }, mod] = await Promise.all([
-          import('@react-pdf/renderer'),
-          import('react'),
-          import('@/components/pdf/VueMensuellePDF'),
-        ])
-        if (!active) return
-        const C = (mod as any)[previewState.componentName]
-        const blob = await pdf(createElement(C as any, previewState.pdfProps) as any).toBlob()
-        if (!active) return
-        const url = URL.createObjectURL(blob)
-        setPreviewState(p => p ? { ...p, blobUrl: url, loading: false } : null)
-      } catch (err) {
-        if (!active) return
-        console.error('Erreur génération PDF', err)
-        setPreviewState(p => p ? { ...p, loading: false, error: String(err) } : null)
-      }
-    })()
-    return () => { active = false }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewState?.componentName, previewState?.loading])
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null)
 
   function navMois(delta: number) {
     let m = mois + delta, a = annee
@@ -271,13 +158,32 @@ export function VueMensuelleClient({
     }
   }
 
-  // Synchrone : ouvre le modal avec spinner, useEffect génère le PDF
-  function openPreview(_key: string, componentName: string, label: string, filename: string) {
-    setPreviewState({
-      componentName, label, filename,
-      pdfProps: buildPDFProps() as Record<string, unknown>,
-      blobUrl: null, loading: true, error: null,
-    })
+  // Génère le PDF et l'ouvre dans un nouvel onglet pour prévisualisation
+  async function openPreview(key: string, componentName: string, _label: string, filename: string) {
+    if (pdfLoading) return
+    setPdfLoading(key)
+    try {
+      const [{ pdf }, { createElement }, mod] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('react'),
+        import('@/components/pdf/VueMensuellePDF'),
+      ])
+      const C = (mod as any)[componentName]
+      const blob = await pdf(createElement(C as any, buildPDFProps()) as any).toBlob()
+      const url = URL.createObjectURL(blob)
+      const win = window.open(url, '_blank')
+      if (!win) {
+        // Popup bloqué — télécharger à la place
+        const a = document.createElement('a')
+        a.href = url; a.download = filename
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000)
+    } catch (err) {
+      console.error('Erreur génération PDF', err)
+    } finally {
+      setPdfLoading(null)
+    }
   }
 
   // Définition des vues PDF disponibles
@@ -369,20 +275,26 @@ export function VueMensuelleClient({
         <div className="flex flex-wrap gap-2">
           {PDF_VIEWS.map(view => {
             const Icon = view.icon
+            const isLoading = pdfLoading === view.key
             return (
               <button
                 key={view.key}
                 onClick={() => openPreview(view.key, view.component, view.label, view.filename)}
+                disabled={!!pdfLoading}
                 className={`
                   flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold
                   transition-all duration-150 shadow-sm ${view.color}
+                  disabled:opacity-60 disabled:cursor-wait
                 `}
               >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
+                {isLoading
+                  ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                  : <Icon className="h-3.5 w-3.5 shrink-0" />
+                }
                 <div className="text-left">
-                  <div className="leading-tight">{view.label}</div>
+                  <div className="leading-tight">{isLoading ? 'Génération…' : view.label}</div>
                   <div className="text-[9px] opacity-75 font-normal leading-tight mt-0.5 hidden sm:block">
-                    {view.desc}
+                    {isLoading ? 'PDF en cours, patientez…' : view.desc}
                   </div>
                 </div>
               </button>
@@ -591,22 +503,6 @@ export function VueMensuelleClient({
           </div>
         )
       })}
-
-      {/* ── Modal prévisualisation (portal dans document.body) ── */}
-      {previewState && createPortal(
-        <PDFPreviewModal
-          label={previewState.label}
-          filename={previewState.filename}
-          blobUrl={previewState.blobUrl}
-          loading={previewState.loading}
-          error={previewState.error}
-          onClose={() => {
-            if (previewState.blobUrl) URL.revokeObjectURL(previewState.blobUrl)
-            setPreviewState(null)
-          }}
-        />,
-        document.body
-      )}
 
       {/* Formateurs sans pôle */}
       {formateurs.filter(f => !f.pole_id).length > 0 && (
