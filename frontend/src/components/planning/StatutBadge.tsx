@@ -9,6 +9,7 @@ const COLORS: Record<string, string> = {
   'Après-midi FP S2':   'bg-amber-50 text-amber-700 border-amber-200',
   'FAD Matin':          'bg-violet-100 text-violet-800 border-violet-200',
   'FAD Après-midi':     'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200',
+  'FAD 1h':             'bg-purple-100 text-purple-700 border-purple-200',
   'Repos':              'bg-gray-100 text-gray-500 border-gray-200',
   // Legacy
   'Matin':              'bg-blue-100 text-blue-800 border-blue-200',
@@ -23,8 +24,9 @@ const SHORT_LABELS: Partial<Record<string, string>> = {
   'Matin FP S2':        'Mat. S2',
   'Après-midi FP S1':   'PM S1',
   'Après-midi FP S2':   'PM S2',
-  'FAD Matin':          'FAD Mat.',
-  'FAD Après-midi':     'FAD PM',
+  'FAD Matin':          'FAD 2h30·S1',
+  'FAD Après-midi':     'FAD 2h30·S2',
+  'FAD 1h':             'FAD 1h',
   'Distance Matin':     'Dist. Mat.',
   'Distance Après-midi':'Dist. PM',
 }

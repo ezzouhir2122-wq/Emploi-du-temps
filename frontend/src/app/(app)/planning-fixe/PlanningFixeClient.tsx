@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { CalendarDays, Info, RotateCcw, Wand2, ChevronDown, ChevronUp, Settings2, Play } from 'lucide-react'
+import { PDFDownloadButton } from '@/components/pdf/PDFDownloadButton'
 import type {
   Formateur, Groupe, Salle, PlanningFixe, Scenario,
   JourSemaine, StatutFixe, RotationSamediConfig, CycleReference, StatutSamedi, SemaineCycle,
@@ -35,7 +36,7 @@ const ROTATION_SUIVANTE: Record<StatutSamedi, StatutSamedi> = {
 // Statuts qui comptent comme une séance travaillée
 const STATUTS_TRAVAIL: StatutFixe[] = [
   'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
-  'FAD Matin', 'FAD Après-midi',
+  'FAD Matin', 'FAD Après-midi', 'FAD 1h',
   'Matin', 'Après-midi', 'Distance', 'Distance Matin', 'Distance Après-midi', // legacy
 ]
 // Statuts physiques (occupent la salle)
@@ -380,9 +381,10 @@ function StandardView({
         )
         .map(p => p.groupe_formation_id!)
     )
-    const allGroupes = groupesFormation.filter(g =>
-      !sallePoleId || !g.pole_id || g.pole_id === sallePoleId
-    )
+    // Strict : si la salle a un pôle, n'afficher QUE les groupes de ce pôle
+    const allGroupes = sallePoleId
+      ? groupesFormation.filter(g => g.pole_id === sallePoleId)
+      : groupesFormation
     return {
       disponibles: allGroupes.filter(g => !prisIds.has(g.id)),
       indisponibles: allGroupes.filter(g => prisIds.has(g.id)),
@@ -439,9 +441,11 @@ function StandardView({
     <>
       {salles.map(salle => {
         const groupe = groupes.find(g => g.salle_id === salle.id)
+        // N'afficher QUE les formateurs explicitement affectés à cette salle via le groupe technique
+        // (jamais le fallback pôle qui mélangeait tous les formateurs)
         const formateursSalle = groupe
           ? formateurs.filter(f => f.groupe_id === groupe.id)
-          : formateurs.filter(f => salle.pole_id && f.pole_id === salle.pole_id)
+          : []
         const salleLabel = salle.nom.replace('Salle ', 'S')
         const expanded = expandedSalles.has(salle.id)
         const occupationFilled = getOccupationSalle(formateursSalle)
@@ -466,6 +470,19 @@ function StandardView({
 
             {/* Bannière taux d'occupation */}
             <OccupationBanner filled={occupationFilled} />
+
+            {/* Aucun formateur affecté → guide */}
+            {formateursSalle.length === 0 && (
+              <div className="flex items-center gap-3 px-4 py-4 bg-amber-50 border-b border-amber-200">
+                <span className="text-2xl">⚙️</span>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Aucun formateur affecté à cette salle</p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    Allez dans <strong>Paramètres → Salles</strong> pour affecter les formateurs (max 3 par salle).
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -499,14 +516,82 @@ function StandardView({
                   {formateursSalle.map(formateur => {
                     const monVenCount = countSeancesMonVen(formateur.id)
                     const seances     = countSeances(formateur.id)
-                    const samediAuto  = monVenCount >= MAX_SEANCES // 10 sous-séances Lun-Ven = quota plein
+                    const samediAuto  = monVenCount >= MAX_SEANCES
+
+                    // Comptage hebdomadaire FAD — toutes journées confondues
+                    const weeklyFad2h30 = planning.filter(p =>
+                      p.formateur_id === formateur.id &&
+                      (p.statut === 'FAD Matin' || p.statut === 'FAD Après-midi')
+                    ).length
+                    const weeklyFad1hRow = planning.find(p =>
+                      p.formateur_id === formateur.id && p.statut === 'FAD 1h'
+                    )
+                    // Jours FAD distincts (1 seul autorisé par semaine)
+                    const weeklyFADDays = JOURS_MON_VEN.filter(j =>
+                      planning.some(p =>
+                        p.formateur_id === formateur.id && p.jour_semaine === j &&
+                        (p.statut === 'FAD Matin' || p.statut === 'FAD Après-midi')
+                      )
+                    ).length
+                    // Jours présentiel (FP) — cible 4
+                    const weeklyPresentielDays = JOURS_MON_VEN.filter(j =>
+                      planning.some(p =>
+                        p.formateur_id === formateur.id && p.jour_semaine === j &&
+                        (p.statut === 'Matin FP S1' || p.statut === 'Matin FP S2' ||
+                         p.statut === 'Après-midi FP S1' || p.statut === 'Après-midi FP S2')
+                      )
+                    ).length
+                    // Jours vides (Repos) sur toute la semaine Lun–Sam — max 1 autorisé
+                    const weeklyReposCount =
+                      JOURS_MON_VEN.filter(j =>
+                        !planning.some(p => p.formateur_id === formateur.id && p.jour_semaine === j)
+                      ).length +
+                      (!planning.some(p => p.formateur_id === formateur.id && p.jour_semaine === 'Samedi') ? 1 : 0)
 
                     return (
                       <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-3 py-1.5 font-medium text-sm leading-tight">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            <span className="truncate max-w-[100px]">{formateur.nom}</span>
+                        <td className="px-2 py-1.5 font-medium text-sm leading-tight w-[120px] min-w-[120px]">
+                          <div className="flex flex-col gap-1">
+                            <span className="truncate text-[11px] font-semibold">{formateur.nom}</span>
                             <SeancesBadge count={seances} />
+                            <div className="flex gap-1 mt-0.5 flex-wrap">
+                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyPresentielDays >= 4 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                                Prés. {weeklyPresentielDays}/4
+                              </span>
+                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyFADDays >= 1 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>
+                                FAD {weeklyFADDays}/1
+                              </span>
+                            </div>
+                            <PDFDownloadButton
+                              formateurNom={formateur.nom}
+                              matricule={formateur.matricule}
+                              salleNom={salle.nom}
+                              poleNom={salle.pole?.nom ?? null}
+                              planning={planning
+                                .filter(p => p.formateur_id === formateur.id)
+                                .map(p => ({
+                                  jour_semaine: p.jour_semaine,
+                                  statut: p.statut,
+                                  groupe_nom: groupesFormation.find(g => g.id === p.groupe_formation_id)?.nom ?? null,
+                                }))
+                              }
+                              totalSeances={seances}
+                              totalHeures={
+                                planning
+                                  .filter(p => p.formateur_id === formateur.id)
+                                  .reduce((acc, p) => {
+                                    const duree: Partial<Record<string, number>> = {
+                                      'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
+                                      'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
+                                      'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
+                                      'Matin': 5, 'Après-midi': 5, 'Distance': 5,
+                                      'Distance Matin': 2.5, 'Distance Après-midi': 2.5,
+                                    }
+                                    return acc + (duree[p.statut] ?? 0)
+                                  }, 0)
+                              }
+                              dateGeneration={new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                            />
                           </div>
                         </td>
                         {JOURS_SEMAINE.map(jour => {
@@ -545,123 +630,237 @@ function StandardView({
                           const ps2 = activeRows.find(r => r.statut === 'Après-midi FP S2')
                           const fadM = activeRows.find(r => r.statut === 'FAD Matin')
                           const fadP = activeRows.find(r => r.statut === 'FAD Après-midi')
+                          const fadH = activeRows.find(r => r.statut === 'FAD 1h')
 
                           const hasMatinBlock = !!(ms1 || ms2)
                           const hasPmBlock    = !!(ps1 || ps2)
-                          const hasFadMatin   = !!fadM
-                          const hasFadPm      = !!fadP
+                          const hasFadAny     = !!(fadM || fadP || fadH)
+                          // Peut ajouter S2 FAD sur ce jour (S1 déjà là, quota semaine ok)
+                          const canAddFad2h30 = weeklyFad2h30 < 2 && !weeklyFad1hRow && canAdd
+                          // Peut démarrer un NOUVEAU jour FAD (1 seul jour FAD par semaine)
+                          const canAddFadS1   = weeklyFADDays === 0 && canAddFad2h30
+                          // 1h FAD dispo uniquement après les 2×2h30 ET sur le jour FAD existant
+                          const canAddFad1h   = weeklyFad2h30 >= 2 && !weeklyFad1hRow && canAdd
+                          // Cellule vide = Repos
+                          const isEmptyDay = activeRows.length === 0
+                          // Slot 1h : visible uniquement sur le jour qui a déjà des sessions FAD 2h30
+                          const showFad1hSlot = !!fadH || (canAddFad1h && hasFadAny)
+                          // Bloc FAD visible si : sessions FAD ce jour OU peut commencer FAD (jour libre) OU complément 1h
+                          const showFadBlock  = !isSamedi && (
+                            hasFadAny ||
+                            (canAddFadS1 && !hasMatinBlock && !hasPmBlock) ||
+                            showFad1hSlot
+                          )
 
-                          // Helper: rendu d'un slot avec groupe
-                          const renderSlot = (row: PlanningFixe | undefined, statut: StatutFixe, showAdd: boolean, borderClass: string) => {
-                            const { disponibles: gDispo, indisponibles: gIndispo } = row
-                              ? getGroupesParDisponibilite(formateur.id, jour, statut, salle.pole_id)
-                              : { disponibles: [] as Groupe[], indisponibles: [] as Groupe[] }
-                            const groupeNom = row ? groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom : undefined
-                            const time = STATUT_TIMES[statut]
-
-                            if (!row && !showAdd) return null
+                          // Helper: groupe picker inline
+                          const renderGroupePicker = (row: PlanningFixe, accentColor: string) => {
+                            const { disponibles: gDispo, indisponibles: gIndispo } =
+                              getGroupesParDisponibilite(formateur.id, jour, row.statut, salle.pole_id)
+                            const groupeNom = groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom
                             return (
-                              <div key={statut} className={`px-1.5 py-1 ${borderClass}`}>
-                                {row ? (
-                                  <>
-                                    <div className="flex items-center gap-1 mb-0.5">
-                                      {time && <span className="text-[8px] text-muted-foreground/70 font-mono">{time}</span>}
-                                      <button
-                                        onClick={() => onRemoveSubSession(row.id)}
-                                        className="ml-auto text-muted-foreground/30 hover:text-red-500 text-[11px] leading-none transition-colors"
-                                        title="Supprimer"
-                                      >×</button>
+                              <Select
+                                value={row.groupe_formation_id ?? '__none__'}
+                                onValueChange={val => onGroupeChange(row.id, val === '__none__' ? null : val)}
+                              >
+                                <SelectTrigger className={`h-7 w-full text-xs px-2 mt-1 font-medium ${row.groupe_formation_id ? `${accentColor} border-solid` : 'border-dashed text-muted-foreground/60'}`}>
+                                  <SelectValue>
+                                    {groupeNom ?? <span className="italic font-normal text-[10px]">Groupe…</span>}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__" className="text-xs italic text-muted-foreground">— Aucun —</SelectItem>
+                                  {gDispo.length === 0 && gIndispo.length === 0 && (
+                                    <div className="px-3 py-2 text-xs text-muted-foreground italic">
+                                      {salle.pole_id ? 'Aucun groupe pour ce pôle' : 'Aucun groupe'}
                                     </div>
-                                    <Select
-                                      value={row.groupe_formation_id ?? '__none__'}
-                                      onValueChange={val => onGroupeChange(row.id, val === '__none__' ? null : val)}
-                                    >
-                                      <SelectTrigger className={`h-5 w-full text-[9px] px-1 border-dashed ${row.groupe_formation_id ? 'border-solid border-primary/30 bg-primary/5' : 'text-muted-foreground/40'}`}>
-                                        <SelectValue>
-                                          {groupeNom
-                                            ? <span className="font-semibold text-primary/80">{groupeNom}</span>
-                                            : <span className="italic">Groupe…</span>
-                                          }
-                                        </SelectValue>
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="__none__" className="text-xs italic text-muted-foreground">— Aucun —</SelectItem>
-                                        {gDispo.length === 0 && gIndispo.length === 0 && (
-                                          <div className="px-3 py-2 text-xs text-muted-foreground italic">
-                                            {salle.pole_id ? 'Aucun groupe pour ce pôle' : 'Aucun groupe disponible'}
-                                          </div>
-                                        )}
-                                        {gDispo.length > 0 && <div className="h-px bg-border my-1" />}
-                                        {gDispo.map(g => <SelectItem key={g.id} value={g.id} className="text-xs font-medium">{g.nom}</SelectItem>)}
-                                        {gIndispo.length > 0 && (
-                                          <>
-                                            <div className="h-px bg-border mt-1" />
-                                            <div className="px-2 py-1 flex items-center gap-1 text-[9px] font-semibold text-rose-500/80 uppercase">
-                                              <Info className="h-2.5 w-2.5" /> Non disponibles
-                                            </div>
-                                            {gIndispo.map(g => <SelectItem key={g.id} value={g.id} disabled className="text-xs line-through text-muted-foreground/40">{g.nom}</SelectItem>)}
-                                          </>
-                                        )}
-                                      </SelectContent>
-                                    </Select>
-                                  </>
-                                ) : (
-                                  <button
-                                    onClick={() => onAddSubSession(formateur.id, jour, statut)}
-                                    className="w-full text-[9px] text-muted-foreground/50 hover:text-primary/70 py-0.5 text-left transition-colors flex items-center gap-1"
-                                  >
-                                    <span className="text-[10px]">＋</span>
-                                    <span>{time}</span>
-                                  </button>
-                                )}
-                              </div>
+                                  )}
+                                  {gDispo.length > 0 && <div className="h-px bg-border my-1" />}
+                                  {gDispo.map(g => <SelectItem key={g.id} value={g.id} className="text-xs">{g.nom}</SelectItem>)}
+                                  {gIndispo.length > 0 && (
+                                    <>
+                                      <div className="h-px bg-border mt-1" />
+                                      <div className="px-2 py-0.5 text-[9px] font-semibold text-rose-500/70 uppercase flex items-center gap-1">
+                                        <Info className="h-2.5 w-2.5" /> Non dispo
+                                      </div>
+                                      {gIndispo.map(g => <SelectItem key={g.id} value={g.id} disabled className="text-xs line-through text-muted-foreground/40">{g.nom}</SelectItem>)}
+                                    </>
+                                  )}
+                                </SelectContent>
+                              </Select>
                             )
                           }
 
+                          // Helper: slot FP rempli
+                          const renderFPSlotFilled = (row: PlanningFixe, time: string, accentBg: string, accentText: string, accentBorder: string) => (
+                            <div className={`px-2 py-1.5 ${accentBg} rounded-sm`}>
+                              <div className="flex items-center justify-between">
+                                <span className={`text-[9px] font-mono font-semibold ${accentText}`}>{time}</span>
+                                <button onClick={() => onRemoveSubSession(row.id)}
+                                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
+                              </div>
+                              {renderGroupePicker(row, `border-${accentBorder} bg-white/80 text-${accentText.replace('text-', '')}`)}
+                            </div>
+                          )
+
+                          // Helper: bouton + pour ajouter un slot FP
+                          const renderFPSlotAdd = (statut: StatutFixe, time: string, colorCls: string) => (
+                            <button onClick={() => onAddSubSession(formateur.id, jour, statut)}
+                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium transition-all hover:opacity-100 opacity-60 ${colorCls}`}>
+                              <span className="text-base leading-none">+</span>
+                              <span className="font-mono text-[10px]">{time}</span>
+                            </button>
+                          )
+
+                          // Cellule vide = Repos (alias de isEmptyDay, déclaré plus haut)
+                          const isEmpty = isEmptyDay
+                          // Repos excédentaire : Lun–Sam combiné, si >1 jour vide en tout
+                          const reposExcedentaire = !isSamedi && isEmpty && weeklyReposCount > 1
+                          // Salle complète ce jour (FP pris par 2 autres formateurs, présentiel impossible)
+                          // → Ne s'applique pas le samedi (rotation : chaque formateur a son propre samedi)
+                          const salleCompleteCeJour = !isSamedi && isEmpty && !hasFadAny && matinFPPris && pmFPPris && weeklyPresentielDays < 4
+
                           return (
-                            <td key={jour} className={`px-0.5 py-1 align-top min-w-[120px] ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
-                              <div className="flex flex-col gap-1">
+                            <td key={jour} className={`px-1 py-1.5 align-top min-w-[150px] max-w-[180px] ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/30 bg-emerald-50/30' : ''}`}>
+                              <div className="flex flex-col gap-1.5">
 
                                 {/* ── BLOC MATIN FP ── */}
-                                {(hasMatinBlock || (!matinFPPris && !hasFadMatin && !hasFadPm && canAdd)) && (
-                                  <div className="rounded border border-blue-200 bg-blue-50/30 overflow-hidden">
-                                    <div className="px-1.5 py-0.5 bg-blue-100/60 text-[9px] font-semibold text-blue-700 uppercase tracking-wide">
-                                      {salleLabel} · Matin FP
+                                {/* Samedi : exclusivité salle désactivée (chaque formateur a son propre samedi en rotation) */}
+                                {(hasMatinBlock || ((!matinFPPris || isSamedi) && !hasFadAny && canAdd && weeklyPresentielDays < 4)) && (
+                                  <div className="rounded-lg border-2 border-blue-200 overflow-hidden bg-white shadow-sm">
+                                    <div className="px-2 py-1 bg-blue-600 flex items-center gap-1.5">
+                                      <span className="text-[10px] font-bold text-white uppercase tracking-wider">☀ Matin FP</span>
                                     </div>
-                                    {renderSlot(ms1, 'Matin FP S1', !matinFPPris && canAdd, 'border-b border-blue-100')}
-                                    {(ms1 || ms2) && renderSlot(ms2, 'Matin FP S2', !matinFPPris && canAdd && !!ms1, '')}
+                                    <div className="p-1.5 flex flex-col gap-1">
+                                      {/* S1 */}
+                                      {ms1
+                                        ? renderFPSlotFilled(ms1, '08h30–11h00', 'bg-blue-50', 'text-blue-700', 'blue-300')
+                                        : ((!matinFPPris || isSamedi) && canAdd && renderFPSlotAdd('Matin FP S1', '08h30–11h00', 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-dashed border-blue-300'))
+                                      }
+                                      {/* S2 — visible après S1 */}
+                                      {(ms1 || ms2) && (
+                                        ms2
+                                          ? renderFPSlotFilled(ms2, '11h00–13h30', 'bg-blue-50/60', 'text-blue-600', 'blue-200')
+                                          : ((!matinFPPris || isSamedi) && canAdd && ms1 && renderFPSlotAdd('Matin FP S2', '11h00–13h30', 'bg-blue-50/60 text-blue-500 hover:bg-blue-100 border border-dashed border-blue-200'))
+                                      )}
+                                    </div>
                                   </div>
                                 )}
 
                                 {/* ── BLOC APRÈS-MIDI FP ── */}
-                                {(hasPmBlock || (!pmFPPris && !hasFadMatin && !hasFadPm && canAdd)) && (
-                                  <div className="rounded border border-amber-200 bg-amber-50/30 overflow-hidden">
-                                    <div className="px-1.5 py-0.5 bg-amber-100/60 text-[9px] font-semibold text-amber-700 uppercase tracking-wide">
-                                      {salleLabel} · Après-midi FP
+                                {(hasPmBlock || ((!pmFPPris || isSamedi) && !hasFadAny && canAdd && weeklyPresentielDays < 4)) && (
+                                  <div className="rounded-lg border-2 border-amber-200 overflow-hidden bg-white shadow-sm">
+                                    <div className="px-2 py-1 bg-amber-500 flex items-center gap-1.5">
+                                      <span className="text-[10px] font-bold text-white uppercase tracking-wider">🌤 Après-midi FP</span>
                                     </div>
-                                    {renderSlot(ps1, 'Après-midi FP S1', !pmFPPris && canAdd, 'border-b border-amber-100')}
-                                    {(ps1 || ps2) && renderSlot(ps2, 'Après-midi FP S2', !pmFPPris && canAdd && !!ps1, '')}
+                                    <div className="p-1.5 flex flex-col gap-1">
+                                      {ps1
+                                        ? renderFPSlotFilled(ps1, '13h30–16h00', 'bg-amber-50', 'text-amber-700', 'amber-300')
+                                        : ((!pmFPPris || isSamedi) && canAdd && renderFPSlotAdd('Après-midi FP S1', '13h30–16h00', 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-dashed border-amber-300'))
+                                      }
+                                      {(ps1 || ps2) && (
+                                        ps2
+                                          ? renderFPSlotFilled(ps2, '16h00–18h30', 'bg-amber-50/60', 'text-amber-600', 'amber-200')
+                                          : ((!pmFPPris || isSamedi) && canAdd && ps1 && renderFPSlotAdd('Après-midi FP S2', '16h00–18h30', 'bg-amber-50/60 text-amber-500 hover:bg-amber-100 border border-dashed border-amber-200'))
+                                      )}
+                                    </div>
                                   </div>
                                 )}
 
                                 {/* ── BLOC FAD ── */}
-                                {!isSamedi && (hasFadMatin || hasFadPm || (!hasMatinBlock && !hasPmBlock && canAdd)) && (
-                                  <div className="rounded border border-violet-200 bg-violet-50/20 overflow-hidden">
-                                    <div className="px-1.5 py-0.5 bg-violet-100/50 text-[9px] font-semibold text-violet-700 uppercase tracking-wide">FAD</div>
-                                    {renderSlot(fadM, 'FAD Matin', canAdd && !hasFadPm, 'border-b border-violet-100')}
-                                    {renderSlot(fadP, 'FAD Après-midi', canAdd && !hasFadMatin, '')}
+                                {showFadBlock && (
+                                  <div className="rounded-lg border-2 border-violet-200 overflow-hidden bg-white shadow-sm">
+                                    <div className="px-2 py-1 bg-violet-600 flex items-center justify-between">
+                                      <span className="text-[10px] font-bold text-white uppercase tracking-wider">📡 FAD</span>
+                                      <span className="text-[9px] text-violet-200 font-mono">
+                                        {weeklyFADDays}/1 jour · {weeklyFad2h30}/2 × 2h30{weeklyFad1hRow ? ' · +1h' : ''}
+                                      </span>
+                                    </div>
+                                    <div className="p-1.5 flex flex-col gap-1">
+                                      {/* S1 — 2h30 */}
+                                      {fadM ? (
+                                        <div className="px-2 py-1.5 bg-violet-50 rounded-sm">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-[9px] font-semibold text-violet-700">S1 · 2h30</span>
+                                            <button onClick={() => onRemoveSubSession(fadM.id)}
+                                              className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
+                                          </div>
+                                          {renderGroupePicker(fadM, 'border-violet-300 bg-white/80 text-violet-700')}
+                                        </div>
+                                      ) : (canAddFadS1 && (
+                                        <button onClick={() => onAddSubSession(formateur.id, jour, 'FAD Matin')}
+                                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium bg-violet-50 text-violet-600 hover:bg-violet-100 border border-dashed border-violet-300 transition-all opacity-70 hover:opacity-100">
+                                          <span className="text-base leading-none">+</span><span>S1 · 2h30</span>
+                                        </button>
+                                      ))}
+
+                                      {/* S2 — 2h30, disponible après S1 */}
+                                      {(fadM || fadP) && (
+                                        fadP ? (
+                                          <div className="px-2 py-1.5 bg-violet-50/60 rounded-sm">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[9px] font-semibold text-violet-600">S2 · 2h30</span>
+                                              <button onClick={() => onRemoveSubSession(fadP.id)}
+                                                className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
+                                            </div>
+                                            {renderGroupePicker(fadP, 'border-violet-200 bg-white/80 text-violet-600')}
+                                          </div>
+                                        ) : (fadM && canAddFad2h30 && (
+                                          <button onClick={() => onAddSubSession(formateur.id, jour, 'FAD Après-midi')}
+                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium bg-violet-50/60 text-violet-500 hover:bg-violet-100 border border-dashed border-violet-200 transition-all opacity-70 hover:opacity-100">
+                                            <span className="text-base leading-none">+</span><span>S2 · 2h30</span>
+                                          </button>
+                                        ))
+                                      )}
+
+                                      {/* 1h complément — après 2 séances 2h30 sur la semaine */}
+                                      {showFad1hSlot && (
+                                        fadH ? (
+                                          <div className="px-2 py-1.5 bg-purple-50 rounded-sm border border-purple-200">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[9px] font-bold text-purple-700">Complément · 1h</span>
+                                              <button onClick={() => onRemoveSubSession(fadH.id)}
+                                                className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
+                                            </div>
+                                            {renderGroupePicker(fadH, 'border-purple-300 bg-white/80 text-purple-700')}
+                                          </div>
+                                        ) : (
+                                          <button onClick={() => onAddSubSession(formateur.id, jour, 'FAD 1h')}
+                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-bold bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-300 transition-all shadow-sm">
+                                            <span className="text-base leading-none">+</span><span>Complément · 1h</span>
+                                          </button>
+                                        )
+                                      )}
+                                    </div>
                                   </div>
                                 )}
 
-                                {/* Repos implicite */}
-                                {activeRows.length === 0 && (
-                                  <div className="flex justify-center pt-0.5">
-                                    <StatutBadge statut="Repos" className="text-[10px]" />
+                                {/* Repos : normal / forcé (salle complète) / excédentaire */}
+                                {isEmpty && !isSamedi && (
+                                  reposExcedentaire ? (
+                                    <div className="rounded-lg border-2 border-orange-200 bg-orange-50 px-2 py-2 text-center">
+                                      <div className="text-[9px] font-bold text-orange-600">⚠ Repos excédentaire</div>
+                                      <div className="text-[8px] text-orange-400 mt-0.5">Samedi compte déjà comme repos</div>
+                                    </div>
+                                  ) : salleCompleteCeJour ? (
+                                    <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-2 text-center">
+                                      <div className="text-[8px] font-semibold text-slate-400">🔒 Salle complète</div>
+                                      <div className="flex justify-center mt-1">
+                                        <StatutBadge statut="Repos" />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex justify-center py-2">
+                                      <StatutBadge statut="Repos" className="text-xs" />
+                                    </div>
+                                  )
+                                )}
+                                {isEmpty && isSamedi && (
+                                  <div className="flex justify-center py-2">
+                                    <StatutBadge statut="Repos" className="text-xs" />
                                   </div>
                                 )}
-
-                                {!canAdd && activeRows.length === 0 && (
-                                  <div className="text-[8px] text-orange-400 text-center">{seances}/{MAX_SEANCES}</div>
+                                {!canAdd && isEmpty && (
+                                  <div className="text-[9px] text-orange-400 text-center font-mono">{seances}/{MAX_SEANCES}</div>
                                 )}
                               </div>
                             </td>

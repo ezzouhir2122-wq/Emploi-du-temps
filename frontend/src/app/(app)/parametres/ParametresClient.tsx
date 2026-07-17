@@ -1086,8 +1086,7 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
       </div>
 
       <div className="rounded-lg border divide-y">
-        {groupes.map(groupe => {
-          const salle = salles.find(s => s.id === groupe.salle_id)
+        {groupes.filter(g => !g.salle_id).map(groupe => {
           const pole = poles.find(p => p.id === groupe.pole_id)
           const isEditing = editingGroupe?.id === groupe.id
           return (
@@ -1111,7 +1110,6 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
                 ) : (
                   <div>
                     <p className="font-medium text-sm">{groupe.nom}</p>
-                    {salle && <p className="text-xs text-muted-foreground">→ {salle.nom}</p>}
                   </div>
                 )}
               </div>

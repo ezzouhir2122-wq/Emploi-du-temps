@@ -8,7 +8,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top accent line */}
         <div className="h-[3px] w-full bg-gradient-to-r from-[#005FAD] via-[#00968C] to-[#005FAD] shrink-0" />
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-3">
           {children}
         </main>
       </div>

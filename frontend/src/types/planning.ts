@@ -6,7 +6,7 @@ export type JourSemaine = 'Lundi' | 'Mardi' | 'Mercredi' | 'Jeudi' | 'Vendredi' 
 export type StatutFixe =
   | 'Matin FP S1' | 'Matin FP S2'
   | 'Après-midi FP S1' | 'Après-midi FP S2'
-  | 'FAD Matin' | 'FAD Après-midi'
+  | 'FAD Matin' | 'FAD Après-midi' | 'FAD 1h'
   | 'Repos'
   // Legacy (rétrocompatibilité données existantes)
   | 'Matin' | 'Après-midi' | 'Distance' | 'Distance Matin' | 'Distance Après-midi'
@@ -23,7 +23,7 @@ export const JOURS_SEMAINE: JourSemaine[] = [
 export const STATUTS_FIXES: StatutFixe[] = [
   'Matin FP S1', 'Matin FP S2',
   'Après-midi FP S1', 'Après-midi FP S2',
-  'FAD Matin', 'FAD Après-midi',
+  'FAD Matin', 'FAD Après-midi', 'FAD 1h',
 ]
 
 // Statuts qui occupent physiquement la salle (compte dans les 24 sous-créneaux)
@@ -35,16 +35,28 @@ export const STATUTS_PHYSIQUES: StatutFixe[] = [
 // Statuts qui comptent dans la masse horaire du formateur
 export const STATUTS_TRAVAIL: StatutFixe[] = [
   'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
-  'FAD Matin', 'FAD Après-midi',
+  'FAD Matin', 'FAD Après-midi', 'FAD 1h',
   'Matin', 'Après-midi', 'Distance', 'Distance Matin', 'Distance Après-midi', // legacy
 ]
 
-// Horaires par statut
+// Horaires / durées par statut
 export const STATUT_TIMES: Partial<Record<StatutFixe, string>> = {
   'Matin FP S1':       '08h30–11h00',
   'Matin FP S2':       '11h00–13h30',
   'Après-midi FP S1':  '13h30–16h00',
   'Après-midi FP S2':  '16h00–18h30',
+  'FAD Matin':         '2h30',
+  'FAD Après-midi':    '2h30',
+  'FAD 1h':            '1h',
+}
+
+// Durée en heures par statut (pour calcul masse horaire)
+export const DUREE_HEURES: Partial<Record<StatutFixe, number>> = {
+  'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
+  'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
+  'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
+  'Matin': 5, 'Après-midi': 5, 'Distance': 5,
+  'Distance Matin': 2.5, 'Distance Après-midi': 2.5,
 }
 
 // Durée en heures de chaque séance
@@ -58,6 +70,7 @@ export interface Pole {
   code: string | null
   description: string | null
   actif: boolean
+  scenario_type: TypeScenario
   created_at: string
 }
 

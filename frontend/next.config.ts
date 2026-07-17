@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // @react-pdf/renderer est ESM-only et ne peut pas être bundlé par Turbopack
+  serverExternalPackages: ['@react-pdf/renderer'],
 };
 
 export default nextConfig;
