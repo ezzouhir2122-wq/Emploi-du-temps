@@ -857,7 +857,7 @@ function StandardView({
                               <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyPresentielDays >= 4 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
                                 Prés. {weeklyPresentielDays}/4
                               </span>
-                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyFad2h30 >= 1 ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'}`}>
+                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyFad2h30 >= 1 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>
                                 FAD {weeklyFad2h30}/2
                               </span>
                             </div>
@@ -1074,35 +1074,35 @@ function StandardView({
 
                                 {/* ── BLOC FAD ── */}
                                 {showFadBlock && (
-                                  <div className="rounded-lg border-2 border-teal-200 overflow-hidden bg-white shadow-sm">
-                                    <div className="px-2 py-1 bg-teal-600 flex items-center justify-between">
+                                  <div className="rounded-lg border-2 border-violet-200 overflow-hidden bg-white shadow-sm">
+                                    <div className="px-2 py-1 bg-violet-600 flex items-center justify-between">
                                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">📡 FAD</span>
-                                      <span className="text-[9px] text-teal-200 font-mono">{weeklyFad2h30}/2 × 2h30</span>
+                                      <span className="text-[9px] text-violet-200 font-mono">{weeklyFad2h30}/2 × 2h30</span>
                                     </div>
                                     <div className="p-1.5 flex flex-col gap-1">
                                       {/* Helper inline pour chaque sous-créneau FAD */}
                                       {([
-                                        { rows: fadMatS1Rows, statut: 'FAD Matin S1' as StatutFixe,      time: '08h30–11h00', bg: 'bg-teal-50',    txt: 'text-teal-700', brd: 'border-teal-300', blocked: !!ms1 },
-                                        { rows: fadMatS2Rows, statut: 'FAD Matin S2' as StatutFixe,      time: '11h00–13h30', bg: 'bg-teal-50/80', txt: 'text-teal-600', brd: 'border-teal-300', blocked: !!ms2 },
-                                        { rows: fadPmS1Rows,  statut: 'FAD Après-midi S1' as StatutFixe, time: '13h30–16h00', bg: 'bg-teal-50/60', txt: 'text-teal-600', brd: 'border-teal-200', blocked: !!ps1 },
-                                        { rows: fadPmS2Rows,  statut: 'FAD Après-midi S2' as StatutFixe, time: '16h00–18h30', bg: 'bg-teal-50/40', txt: 'text-teal-500', brd: 'border-teal-200', blocked: !!ps2 },
+                                        { rows: fadMatS1Rows, statut: 'FAD Matin S1' as StatutFixe,      time: '08h30–11h00', bg: 'bg-violet-50',    txt: 'text-violet-700', brd: 'border-violet-300', blocked: !!ms1 },
+                                        { rows: fadMatS2Rows, statut: 'FAD Matin S2' as StatutFixe,      time: '11h00–13h30', bg: 'bg-violet-50/80', txt: 'text-violet-600', brd: 'border-violet-300', blocked: !!ms2 },
+                                        { rows: fadPmS1Rows,  statut: 'FAD Après-midi S1' as StatutFixe, time: '13h30–16h00', bg: 'bg-violet-50/60', txt: 'text-violet-600', brd: 'border-violet-200', blocked: !!ps1 },
+                                        { rows: fadPmS2Rows,  statut: 'FAD Après-midi S2' as StatutFixe, time: '16h00–18h30', bg: 'bg-violet-50/40', txt: 'text-violet-500', brd: 'border-violet-200', blocked: !!ps2 },
                                       ] as const).map(({ rows, statut, time, bg, txt, brd, blocked }) => {
                                         if (blocked) return null
                                         if (rows.length > 0) return (
                                           <div key={statut} className={`px-2 py-1.5 ${bg} rounded-sm`}>
                                             <div className="flex items-center gap-1 mb-0.5">
                                               <span className={`text-[9px] font-mono font-semibold ${txt}`}>{time}</span>
-                                              <span className="text-[8px] text-teal-500">· {rows.length} grp</span>
+                                              <span className="text-[8px] text-violet-500">· {rows.length} grp</span>
                                             </div>
                                             {rows.map(row => (
                                               <div key={row.id} className="flex items-center gap-1 mt-0.5">
-                                                <div className="flex-1">{renderGroupePicker(row, `border-teal-300 bg-white/80 ${txt}`)}</div>
+                                                <div className="flex-1">{renderGroupePicker(row, `border-violet-300 bg-white/80 ${txt}`)}</div>
                                                 <button onClick={() => onRemoveSubSession(row.id)} className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
                                               </div>
                                             ))}
                                             {rows.length < 3 && (
                                               <button onClick={() => onAddSubSession(formateur.id, jour, statut)}
-                                                className={`w-full flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[9px] font-medium ${txt} hover:bg-teal-100 border border-dashed ${brd} mt-1 transition-all`}>
+                                                className={`w-full flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[9px] font-medium ${txt} hover:bg-violet-100 border border-dashed ${brd} mt-1 transition-all`}>
                                                 <span>+</span><span>Fusionner un groupe</span>
                                               </button>
                                             )}
@@ -1110,7 +1110,7 @@ function StandardView({
                                         )
                                         if (canAddFad2h30) return (
                                           <button key={statut} onClick={() => onAddSubSession(formateur.id, jour, statut)}
-                                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium ${bg} ${txt} hover:bg-teal-100 border border-dashed ${brd} opacity-70 hover:opacity-100 transition-all`}>
+                                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium ${bg} ${txt} hover:bg-violet-100 border border-dashed ${brd} opacity-70 hover:opacity-100 transition-all`}>
                                             <span className="text-base leading-none">+</span>
                                             <span className="font-mono text-[10px]">{time}</span>
                                           </button>
@@ -1121,16 +1121,16 @@ function StandardView({
                                       {/* Complément 1h */}
                                       {showFad1hSlot && (
                                         fadHRow ? (
-                                          <div className="px-2 py-1.5 bg-teal-100 rounded-sm border border-teal-200">
+                                          <div className="px-2 py-1.5 bg-violet-100 rounded-sm border border-violet-200">
                                             <div className="flex items-center justify-between">
-                                              <span className="text-[9px] font-bold text-teal-700">Complément · 1h</span>
+                                              <span className="text-[9px] font-bold text-violet-700">Complément · 1h</span>
                                               <button onClick={() => onRemoveSubSession(fadHRow.id)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
                                             </div>
-                                            {renderGroupePicker(fadHRow, 'border-teal-300 bg-white/80 text-teal-700')}
+                                            {renderGroupePicker(fadHRow, 'border-violet-300 bg-white/80 text-violet-700')}
                                           </div>
                                         ) : (
                                           <button onClick={() => onAddSubSession(formateur.id, jour, 'FAD 1h')}
-                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-bold bg-teal-50 text-teal-600 hover:bg-teal-100 border border-teal-300 transition-all shadow-sm">
+                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-bold bg-violet-50 text-violet-600 hover:bg-violet-100 border border-violet-300 transition-all shadow-sm">
                                             <span className="text-base leading-none">+</span><span>Complément · 1h</span>
                                           </button>
                                         )
