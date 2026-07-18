@@ -547,20 +547,34 @@ function StandardView({
 
   // Groupes disponibles / indisponibles pour une sous-séance spécifique
   function getGroupesParDisponibilite(
-    formateurId: string, jour: JourSemaine, statut: StatutFixe, sallePoleId: string | null
+    formateurId: string, jour: JourSemaine, statut: StatutFixe, sallePoleId: string | null,
+    currentRowId?: string
   ): { disponibles: Groupe[]; indisponibles: Groupe[] } {
-    // Exclusivité par statut exact (chaque sous-créneau est indépendant)
+    const FAD_FUSION: StatutFixe[] = ['FAD Matin S1','FAD Matin S2','FAD Après-midi S1','FAD Après-midi S2','FAD Matin','FAD Après-midi']
+    const isFAD = FAD_FUSION.includes(statut)
+    // Pour FAD, inclure statuts legacy équivalents (FAD Matin ↔ FAD Matin S1, etc.)
+    const equivStatuts: StatutFixe[] = isFAD
+      ? (statut === 'FAD Matin S1' || statut === 'FAD Matin')
+        ? ['FAD Matin S1', 'FAD Matin']
+        : statut === 'FAD Matin S2'
+        ? ['FAD Matin S2']
+        : (statut === 'FAD Après-midi S1' || statut === 'FAD Après-midi')
+        ? ['FAD Après-midi S1', 'FAD Après-midi']
+        : ['FAD Après-midi S2']
+      : [statut]
+
     const prisIds = new Set(
       planning
         .filter(p =>
-          p.formateur_id !== formateurId &&
+          // FAD fusion : exclure tous formateurs (un groupe = un seul formateur par créneau)
+          // FP : exclure seulement les autres formateurs
+          (isFAD ? p.id !== currentRowId : p.formateur_id !== formateurId) &&
           p.jour_semaine === jour &&
-          p.statut === statut &&
+          (equivStatuts as string[]).includes(p.statut) &&
           p.groupe_formation_id
         )
         .map(p => p.groupe_formation_id!)
     )
-    // Strict : si la salle a un pôle, n'afficher QUE les groupes de ce pôle
     const allGroupes = sallePoleId
       ? groupesFormation.filter(g => g.pole_id === sallePoleId)
       : groupesFormation
@@ -949,7 +963,7 @@ function StandardView({
                           // Helper: groupe picker inline
                           const renderGroupePicker = (row: PlanningFixe, accentColor: string) => {
                             const { disponibles: gDispo, indisponibles: gIndispo } =
-                              getGroupesParDisponibilite(formateur.id, jour, row.statut, salle.pole_id)
+                              getGroupesParDisponibilite(formateur.id, jour, row.statut, salle.pole_id, row.id)
                             const groupeNom = groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom
                             return (
                               <Select

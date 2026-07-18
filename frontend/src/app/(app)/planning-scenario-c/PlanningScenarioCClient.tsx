@@ -525,6 +525,31 @@ export function PlanningScenarioCClient({
 
   function renderGroupePicker(row: PlanningFixe) {
     const groupeNom = groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom
+
+    // Pour FAD fusion : exclure les groupes déjà pris par n'importe quel formateur sur ce créneau
+    const FAD_FUSION: StatutFixe[] = ['FAD Matin S1','FAD Matin S2','FAD Après-midi S1','FAD Après-midi S2','FAD Matin','FAD Après-midi']
+    const isFAD = FAD_FUSION.includes(row.statut)
+    const equivStatuts: StatutFixe[] = isFAD
+      ? (row.statut === 'FAD Matin S1' || row.statut === 'FAD Matin') ? ['FAD Matin S1','FAD Matin']
+      : row.statut === 'FAD Matin S2' ? ['FAD Matin S2']
+      : (row.statut === 'FAD Après-midi S1' || row.statut === 'FAD Après-midi') ? ['FAD Après-midi S1','FAD Après-midi']
+      : ['FAD Après-midi S2']
+      : [row.statut]
+
+    const prisIds = isFAD ? new Set(
+      planning
+        .filter(p =>
+          p.id !== row.id &&
+          p.jour_semaine === row.jour_semaine &&
+          (equivStatuts as string[]).includes(p.statut) &&
+          p.groupe_formation_id
+        )
+        .map(p => p.groupe_formation_id!)
+    ) : new Set<string>()
+
+    const disponibles = groupesFormation.filter(g => !prisIds.has(g.id))
+    const indisponibles = groupesFormation.filter(g => prisIds.has(g.id))
+
     return (
       <Select
         value={row.groupe_formation_id ?? '__none__'}
@@ -537,9 +562,17 @@ export function PlanningScenarioCClient({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__none__" className="text-xs italic text-muted-foreground">— Aucun —</SelectItem>
-          {groupesFormation.map(g => (
+          {disponibles.map(g => (
             <SelectItem key={g.id} value={g.id} className="text-xs">{g.nom}</SelectItem>
           ))}
+          {indisponibles.length > 0 && (
+            <>
+              <div className="px-2 py-1 text-[10px] text-muted-foreground/60 border-t mt-1">Déjà affectés</div>
+              {indisponibles.map(g => (
+                <SelectItem key={g.id} value={g.id} disabled className="text-xs text-muted-foreground/50">{g.nom}</SelectItem>
+              ))}
+            </>
+          )}
         </SelectContent>
       </Select>
     )
