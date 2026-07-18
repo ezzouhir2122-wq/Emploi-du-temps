@@ -556,31 +556,34 @@ function StandardView({
   }
 
   // Groupes disponibles / indisponibles pour une sous-séance spécifique
+  // Règle : un groupe ne peut être que dans UN seul créneau horaire à la fois,
+  // que ce soit FP ou FAD, chez n'importe quel formateur du pôle ou hors pôle.
   function getGroupesParDisponibilite(
     formateurId: string, jour: JourSemaine, statut: StatutFixe, sallePoleId: string | null,
     currentRowId?: string
   ): { disponibles: Groupe[]; indisponibles: Groupe[] } {
-    const FAD_FUSION: StatutFixe[] = ['FAD Matin S1','FAD Matin S2','FAD Après-midi S1','FAD Après-midi S2','FAD Matin','FAD Après-midi']
-    const isFAD = FAD_FUSION.includes(statut)
-    // Pour FAD, inclure statuts legacy équivalents (FAD Matin ↔ FAD Matin S1, etc.)
-    const equivStatuts: StatutFixe[] = isFAD
-      ? (statut === 'FAD Matin S1' || statut === 'FAD Matin')
-        ? ['FAD Matin S1', 'FAD Matin']
-        : statut === 'FAD Matin S2'
-        ? ['FAD Matin S2']
-        : (statut === 'FAD Après-midi S1' || statut === 'FAD Après-midi')
-        ? ['FAD Après-midi S1', 'FAD Après-midi']
-        : ['FAD Après-midi S2']
-      : [statut]
+    // Tous les statuts qui occupent le même créneau horaire (FP + FAD confondus)
+    const sameSlot: Record<string, StatutFixe[]> = {
+      'Matin FP S1':         ['Matin FP S1', 'FAD Matin S1', 'FAD Matin'],
+      'FAD Matin S1':        ['Matin FP S1', 'FAD Matin S1', 'FAD Matin'],
+      'FAD Matin':           ['Matin FP S1', 'FAD Matin S1', 'FAD Matin'],
+      'Matin FP S2':         ['Matin FP S2', 'FAD Matin S2'],
+      'FAD Matin S2':        ['Matin FP S2', 'FAD Matin S2'],
+      'Après-midi FP S1':    ['Après-midi FP S1', 'FAD Après-midi S1', 'FAD Après-midi'],
+      'FAD Après-midi S1':   ['Après-midi FP S1', 'FAD Après-midi S1', 'FAD Après-midi'],
+      'FAD Après-midi':      ['Après-midi FP S1', 'FAD Après-midi S1', 'FAD Après-midi'],
+      'Après-midi FP S2':    ['Après-midi FP S2', 'FAD Après-midi S2'],
+      'FAD Après-midi S2':   ['Après-midi FP S2', 'FAD Après-midi S2'],
+    }
+    const slotStatuts: StatutFixe[] = sameSlot[statut] ?? [statut]
 
+    // Groupes déjà pris sur ce créneau — tous formateurs confondus (FP et FAD)
     const prisIds = new Set(
       planning
         .filter(p =>
-          // FAD fusion : exclure tous formateurs (un groupe = un seul formateur par créneau)
-          // FP : exclure seulement les autres formateurs
-          (isFAD ? p.id !== currentRowId : p.formateur_id !== formateurId) &&
+          p.id !== currentRowId &&
           p.jour_semaine === jour &&
-          (equivStatuts as string[]).includes(p.statut) &&
+          slotStatuts.includes(p.statut) &&
           p.groupe_formation_id
         )
         .map(p => p.groupe_formation_id!)

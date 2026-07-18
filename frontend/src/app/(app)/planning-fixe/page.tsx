@@ -16,7 +16,7 @@ export default async function PlanningFixePage() {
     supabase.from('poles').select('*').eq('actif', true).order('nom'),
     supabase.from('salles').select('*').order('nom'),
     supabase.from('formateurs').select('*').eq('actif', true).order('nom'),
-    supabase.from('planning_fixe').select('formateur_id, jour_semaine, statut'),
+    supabase.from('planning_fixe').select('id, formateur_id, jour_semaine, statut, groupe_formation_id, salle_id'),
   ])
 
   return (
