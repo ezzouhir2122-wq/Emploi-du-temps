@@ -21,18 +21,16 @@ import { JOURS_SEMAINE } from '@/types/planning'
 
 const JOURS_MON_VEN: JourSemaine[] = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
 
-const HORAIRES_SLOTS: { statut: StatutFixe; label: string; time: string; bg: string; fg: string }[] = [
-  { statut: 'Matin FP S1',         label: 'Matin S1',        time: '08h30 – 11h00', bg: '#EFF6FF', fg: '#1D4ED8' },
-  { statut: 'Matin FP S2',         label: 'Matin S2',        time: '11h00 – 13h30', bg: '#DBEAFE', fg: '#1E40AF' },
-  { statut: 'Après-midi FP S1',    label: 'Après-midi S1',   time: '13h30 – 16h00', bg: '#F0FDF4', fg: '#15803D' },
-  { statut: 'Après-midi FP S2',    label: 'Après-midi S2',   time: '16h00 – 18h30', bg: '#DCFCE7', fg: '#166534' },
-  { statut: 'FAD Matin S1',        label: 'FAD 08h30–11h',   time: '08h30 – 11h00', bg: '#F0FDFA', fg: '#0D9488' },
-  { statut: 'FAD Matin S2',        label: 'FAD 11h–13h30',   time: '11h00 – 13h30', bg: '#CCFBF1', fg: '#0F766E' },
-  { statut: 'FAD Après-midi S1',   label: 'FAD 13h30–16h',   time: '13h30 – 16h00', bg: '#E0F7FA', fg: '#0E7490' },
-  { statut: 'FAD Après-midi S2',   label: 'FAD 16h–18h30',   time: '16h00 – 18h30', bg: '#B2EBF2', fg: '#0C5E74' },
-  { statut: 'FAD Matin',           label: 'FAD Matin',       time: '2h30 dist.',    bg: '#F0FDFA', fg: '#0D9488' },
-  { statut: 'FAD Après-midi',      label: 'FAD Après-midi',  time: '2h30 dist.',    bg: '#CCFBF1', fg: '#0F766E' },
-  { statut: 'FAD 1h',              label: 'FAD Complément',  time: '1h dist.',      bg: '#F0FDFA', fg: '#0D9488' },
+const HORAIRES_SLOTS: { statut: StatutFixe; label: string; time: string; bg: string; fg: string; extraStatuts?: StatutFixe[] }[] = [
+  { statut: 'Matin FP S1',         label: 'Matin S1',       time: '08h30–11h',    bg: '#EFF6FF', fg: '#1D4ED8' },
+  { statut: 'Matin FP S2',         label: 'Matin S2',       time: '11h–13h30',    bg: '#DBEAFE', fg: '#1E40AF' },
+  { statut: 'Après-midi FP S1',    label: 'Après-midi S1',  time: '13h30–16h',    bg: '#F0FDF4', fg: '#15803D' },
+  { statut: 'Après-midi FP S2',    label: 'Après-midi S2',  time: '16h–18h30',    bg: '#DCFCE7', fg: '#166534' },
+  { statut: 'FAD Matin S1',        label: 'FAD 08h30–11h',  time: '08h30–11h',    bg: '#F0FDFA', fg: '#0D9488', extraStatuts: ['FAD Matin'] },
+  { statut: 'FAD Matin S2',        label: 'FAD 11h–13h30',  time: '11h–13h30',    bg: '#CCFBF1', fg: '#0F766E' },
+  { statut: 'FAD Après-midi S1',   label: 'FAD 13h30–16h',  time: '13h30–16h',    bg: '#E0F7FA', fg: '#0E7490', extraStatuts: ['FAD Après-midi'] },
+  { statut: 'FAD Après-midi S2',   label: 'FAD 16h–18h30',  time: '16h–18h30',    bg: '#B2EBF2', fg: '#0C5E74' },
+  { statut: 'FAD 1h',              label: 'FAD Complément', time: '1h dist.',      bg: '#F0FDFA', fg: '#0D9488' },
 ]
 
 // ── Fiche emploi du temps ─────────────────────────────────────
@@ -47,7 +45,10 @@ function FormateurScheduleModal({
   onClose: () => void
 }) {
   const rows = planning.filter(p => p.formateur_id === formateur.id)
-  const slotsActifs = HORAIRES_SLOTS.filter(s => rows.some(r => r.statut === s.statut))
+  const slotsActifs = HORAIRES_SLOTS.filter(s => {
+    const statuts = [s.statut, ...(s.extraStatuts ?? [])]
+    return rows.some(r => statuts.includes(r.statut))
+  })
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
@@ -98,11 +99,12 @@ function FormateurScheduleModal({
                       <div className="text-[10px] font-mono text-muted-foreground pl-4">{slot.time}</div>
                     </td>
                     {JOURS_SEMAINE.map(jour => {
-                      const fusionRows = rows.filter(r => r.jour_semaine === jour && r.statut === slot.statut)
+                      const slotStatuts = [slot.statut, ...(slot.extraStatuts ?? [])]
+                      const fusionRows = rows.filter(r => r.jour_semaine === jour && slotStatuts.includes(r.statut))
                       const groupesNoms = fusionRows
                         .map(r => groupesFormation.find(g => g.id === r.groupe_formation_id)?.nom)
                         .filter(Boolean) as string[]
-                      const groupeDisplay = groupesNoms.length > 0 ? groupesNoms.join(' · ') : null
+                      const groupeDisplay = groupesNoms.length > 0 ? groupesNoms.join('_') : null
                       return (
                         <td key={jour} className={`px-2 py-3 text-center align-middle ${jour === 'Samedi' ? 'bg-emerald-50/30' : ''}`}>
                           {fusionRows.length > 0 ? (
