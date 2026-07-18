@@ -33,19 +33,25 @@ const JOURS_FULL: Record<JourSemaine, string> = {
   Jeudi: 'JEUDI', Vendredi: 'VENDREDI', Samedi: 'SAMEDI',
 }
 
-const SLOTS: { statut: StatutFixe; label: string; time: string; bg: string; fg: string; border: string; dot: string }[] = [
-  { statut: 'Matin FP S1',      label: 'Matin S1',      time: '08h30 – 11h00', bg: '#EFF6FF', fg: '#1D4ED8', border: '#BFDBFE', dot: '#3B82F6' },
-  { statut: 'Matin FP S2',      label: 'Matin S2',      time: '11h00 – 13h30', bg: '#DBEAFE', fg: '#1E40AF', border: '#93C5FD', dot: '#2563EB' },
-  { statut: 'Après-midi FP S1', label: 'Après-midi S1', time: '13h30 – 16h00', bg: '#FFF7ED', fg: '#C2410C', border: '#FED7AA', dot: '#F97316' },
-  { statut: 'Après-midi FP S2', label: 'Après-midi S2', time: '16h00 – 18h30', bg: '#FFFBEB', fg: '#92400E', border: '#FDE68A', dot: '#F59E0B' },
-  { statut: 'FAD Matin',        label: 'FAD Matin',     time: '2h30',          bg: '#F5F3FF', fg: '#5B21B6', border: '#C4B5FD', dot: '#7C3AED' },
-  { statut: 'FAD Après-midi',   label: 'FAD Après-midi',time: '2h30',          bg: '#EDE9FE', fg: '#4C1D95', border: '#A78BFA', dot: '#6D28D9' },
-  { statut: 'FAD 1h',           label: 'FAD Complément',time: '1h00',          bg: '#FAF5FF', fg: '#6B21A8', border: '#D8B4FE', dot: '#9333EA' },
+const SLOTS: { statut: StatutFixe; label: string; time: string; bg: string; fg: string; border: string; dot: string; extraStatuts?: StatutFixe[] }[] = [
+  { statut: 'Matin FP S1',         label: 'Matin S1',       time: '08h30–11h',   bg: '#EFF6FF', fg: '#1D4ED8', border: '#BFDBFE', dot: '#3B82F6' },
+  { statut: 'Matin FP S2',         label: 'Matin S2',       time: '11h–13h30',   bg: '#DBEAFE', fg: '#1E40AF', border: '#93C5FD', dot: '#2563EB' },
+  { statut: 'Après-midi FP S1',    label: 'Après-midi S1',  time: '13h30–16h',   bg: '#F0FDF4', fg: '#15803D', border: '#A7F3D0', dot: '#059669' },
+  { statut: 'Après-midi FP S2',    label: 'Après-midi S2',  time: '16h–18h30',   bg: '#DCFCE7', fg: '#166534', border: '#6EE7B7', dot: '#10B981' },
+  // legacy 'FAD Matin' → fusionné dans S1
+  { statut: 'FAD Matin S1',        label: 'FAD 08h30–11h',  time: '08h30–11h',   bg: '#F0FDFA', fg: '#0D9488', border: '#99F6E4', dot: '#14B8A6', extraStatuts: ['FAD Matin'] },
+  { statut: 'FAD Matin S2',        label: 'FAD 11h–13h30',  time: '11h–13h30',   bg: '#CCFBF1', fg: '#0F766E', border: '#5EEAD4', dot: '#0D9488' },
+  // legacy 'FAD Après-midi' → fusionné dans S1
+  { statut: 'FAD Après-midi S1',   label: 'FAD 13h30–16h',  time: '13h30–16h',   bg: '#E0F7FA', fg: '#0E7490', border: '#67E8F9', dot: '#06B6D4', extraStatuts: ['FAD Après-midi'] },
+  { statut: 'FAD Après-midi S2',   label: 'FAD 16h–18h30',  time: '16h–18h30',   bg: '#B2EBF2', fg: '#0C5E74', border: '#A5F3FC', dot: '#0891B2' },
+  { statut: 'FAD 1h',              label: 'FAD Complément', time: '1h dist.',     bg: '#F0FDFA', fg: '#0D9488', border: '#99F6E4', dot: '#14B8A6' },
 ]
 
 const DUREE: Partial<Record<StatutFixe, number>> = {
   'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
   'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
+  'FAD Matin S1': 2.5, 'FAD Matin S2': 2.5,
+  'FAD Après-midi S1': 2.5, 'FAD Après-midi S2': 2.5,
   'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
 }
 
@@ -276,8 +282,9 @@ const s = StyleSheet.create({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getRow(planning: PlanningRowPDF[], jour: JourSemaine, statut: StatutFixe) {
-  return planning.find(r => r.jour_semaine === jour && r.statut === statut)
+function getRows(planning: PlanningRowPDF[], jour: JourSemaine, statut: StatutFixe, extraStatuts?: StatutFixe[]) {
+  const allStatuts = [statut, ...(extraStatuts ?? [])]
+  return planning.filter(r => r.jour_semaine === jour && (allStatuts as string[]).includes(r.statut))
 }
 
 function hasAnySession(planning: PlanningRowPDF[], jour: JourSemaine) {
@@ -297,9 +304,10 @@ export function FormateurPlanningPDF({
   planning, totalSeances, totalHeures, dateGeneration, logoUrl,
 }: FormateurPlanningPDFProps) {
 
-  const activeSlots = SLOTS.filter(slot =>
-    planning.some(r => r.statut === slot.statut)
-  )
+  const activeSlots = SLOTS.filter(slot => {
+    const allStatuts = [slot.statut, ...(slot.extraStatuts ?? [])]
+    return planning.some(r => (allStatuts as string[]).includes(r.statut))
+  })
 
   const joursActifs = JOURS.filter(j => hasAnySession(planning, j)).length
   const refDoc = `EDT-${dateGeneration.replace(/\//g, '')}-${matricule ?? 'X'}`
@@ -392,16 +400,18 @@ export function FormateurPlanningPDF({
               </View>
 
               {JOURS.map(jour => {
-                const row = getRow(planning, jour, slot.statut)
+                const fusionRows = getRows(planning, jour, slot.statut, slot.extraStatuts)
                 const dayHasSessions = hasAnySession(planning, jour)
+                const groupesNoms = fusionRows.map(r => r.groupe_nom).filter(Boolean) as string[]
+                const groupeDisplay = groupesNoms.length > 0 ? groupesNoms.join('_') : null
 
-                if (row) {
+                if (fusionRows.length > 0) {
                   return (
                     <View key={jour} style={[s.cell, { backgroundColor: slot.bg, borderColor: slot.border }]}>
                       <Text style={[s.cellTypeTag, { color: slot.fg }]}>{slot.label}</Text>
                       <Text style={[s.cellTime, { color: slot.fg }]}>{slot.time}</Text>
-                      {row.groupe_nom
-                        ? <Text style={[s.cellGroupe, { color: slot.fg }]}>{row.groupe_nom}</Text>
+                      {groupeDisplay
+                        ? <Text style={[s.cellGroupe, { color: slot.fg }]}>{groupeDisplay}</Text>
                         : <Text style={[s.cellGroupe, { color: '#94A3B8', fontFamily: 'Helvetica-Oblique' }]}>—</Text>
                       }
                     </View>
@@ -448,9 +458,9 @@ export function FormateurPlanningPDF({
               {[
                 { label: 'Présentiel Matin S1', color: '#3B82F6' },
                 { label: 'Présentiel Matin S2', color: '#2563EB' },
-                { label: 'Présentiel Après-midi S1', color: '#F97316' },
-                { label: 'Présentiel Après-midi S2', color: '#F59E0B' },
-                { label: 'FAD / Distanciel', color: '#7C3AED' },
+                { label: 'Présentiel Après-midi S1', color: '#059669' },
+                { label: 'Présentiel Après-midi S2', color: '#10B981' },
+                { label: 'FAD / Distanciel', color: '#14B8A6' },
               ].map(l => (
                 <View key={l.label} style={s.legendItem}>
                   <View style={[s.legendDot, { backgroundColor: l.color }]} />
