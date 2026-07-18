@@ -1068,10 +1068,10 @@ function StandardView({
                                     <div className="p-1.5 flex flex-col gap-1">
                                       {/* Helper inline pour chaque sous-créneau FAD */}
                                       {([
-                                        { rows: fadMatS1Rows, statut: 'FAD Matin S1' as StatutFixe,      time: '08h30–11h00', bg: 'bg-teal-50',    txt: 'text-teal-700', brd: 'border-teal-300', blocked: blockFpMatS1 },
-                                        { rows: fadMatS2Rows, statut: 'FAD Matin S2' as StatutFixe,      time: '11h00–13h30', bg: 'bg-teal-50/80', txt: 'text-teal-600', brd: 'border-teal-300', blocked: blockFpMatS2 },
-                                        { rows: fadPmS1Rows,  statut: 'FAD Après-midi S1' as StatutFixe, time: '13h30–16h00', bg: 'bg-teal-50/60', txt: 'text-teal-600', brd: 'border-teal-200', blocked: blockFpPmS1  },
-                                        { rows: fadPmS2Rows,  statut: 'FAD Après-midi S2' as StatutFixe, time: '16h00–18h30', bg: 'bg-teal-50/40', txt: 'text-teal-500', brd: 'border-teal-200', blocked: blockFpPmS2  },
+                                        { rows: fadMatS1Rows, statut: 'FAD Matin S1' as StatutFixe,      time: '08h30–11h00', bg: 'bg-teal-50',    txt: 'text-teal-700', brd: 'border-teal-300', blocked: !!ms1 },
+                                        { rows: fadMatS2Rows, statut: 'FAD Matin S2' as StatutFixe,      time: '11h00–13h30', bg: 'bg-teal-50/80', txt: 'text-teal-600', brd: 'border-teal-300', blocked: !!ms2 },
+                                        { rows: fadPmS1Rows,  statut: 'FAD Après-midi S1' as StatutFixe, time: '13h30–16h00', bg: 'bg-teal-50/60', txt: 'text-teal-600', brd: 'border-teal-200', blocked: !!ps1 },
+                                        { rows: fadPmS2Rows,  statut: 'FAD Après-midi S2' as StatutFixe, time: '16h00–18h30', bg: 'bg-teal-50/40', txt: 'text-teal-500', brd: 'border-teal-200', blocked: !!ps2 },
                                       ] as const).map(({ rows, statut, time, bg, txt, brd, blocked }) => {
                                         if (blocked) return null
                                         if (rows.length > 0) return (
