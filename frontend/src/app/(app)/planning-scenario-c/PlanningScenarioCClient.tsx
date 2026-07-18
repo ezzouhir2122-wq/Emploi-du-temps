@@ -22,15 +22,15 @@ import { JOURS_SEMAINE } from '@/types/planning'
 const JOURS_MON_VEN: JourSemaine[] = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
 
 const HORAIRES_SLOTS: { statut: StatutFixe; label: string; time: string; bg: string; fg: string; extraStatuts?: StatutFixe[] }[] = [
-  { statut: 'Matin FP S1',         label: 'Matin S1',       time: '08h30–11h',    bg: '#EFF6FF', fg: '#1D4ED8' },
-  { statut: 'Matin FP S2',         label: 'Matin S2',       time: '11h–13h30',    bg: '#DBEAFE', fg: '#1E40AF' },
-  { statut: 'Après-midi FP S1',    label: 'Après-midi S1',  time: '13h30–16h',    bg: '#F0FDF4', fg: '#15803D' },
-  { statut: 'Après-midi FP S2',    label: 'Après-midi S2',  time: '16h–18h30',    bg: '#DCFCE7', fg: '#166534' },
-  { statut: 'FAD Matin S1',        label: 'FAD 08h30–11h',  time: '08h30–11h',    bg: '#F0FDFA', fg: '#0D9488', extraStatuts: ['FAD Matin'] },
-  { statut: 'FAD Matin S2',        label: 'FAD 11h–13h30',  time: '11h–13h30',    bg: '#CCFBF1', fg: '#0F766E' },
-  { statut: 'FAD Après-midi S1',   label: 'FAD 13h30–16h',  time: '13h30–16h',    bg: '#E0F7FA', fg: '#0E7490', extraStatuts: ['FAD Après-midi'] },
-  { statut: 'FAD Après-midi S2',   label: 'FAD 16h–18h30',  time: '16h–18h30',    bg: '#B2EBF2', fg: '#0C5E74' },
-  { statut: 'FAD 1h',              label: 'FAD Complément', time: '1h dist.',      bg: '#F0FDFA', fg: '#0D9488' },
+  { statut: 'Matin FP S1',         label: 'Matin S1',       time: '08h30–11h',    bg: '#DBEAFE', fg: '#1D4ED8' },
+  { statut: 'Matin FP S2',         label: 'Matin S2',       time: '11h–13h30',    bg: '#BFDBFE', fg: '#1E40AF' },
+  { statut: 'Après-midi FP S1',    label: 'Après-midi S1',  time: '13h30–16h',    bg: '#D1FAE5', fg: '#065F46' },
+  { statut: 'Après-midi FP S2',    label: 'Après-midi S2',  time: '16h–18h30',    bg: '#A7F3D0', fg: '#064E3B' },
+  { statut: 'FAD Matin S1',        label: 'FAD 08h30–11h',  time: '08h30–11h',    bg: '#EDE9FE', fg: '#6D28D9', extraStatuts: ['FAD Matin'] },
+  { statut: 'FAD Matin S2',        label: 'FAD 11h–13h30',  time: '11h–13h30',    bg: '#DDD6FE', fg: '#5B21B6' },
+  { statut: 'FAD Après-midi S1',   label: 'FAD 13h30–16h',  time: '13h30–16h',    bg: '#F5F3FF', fg: '#7C3AED', extraStatuts: ['FAD Après-midi'] },
+  { statut: 'FAD Après-midi S2',   label: 'FAD 16h–18h30',  time: '16h–18h30',    bg: '#E9D5FF', fg: '#6D28D9' },
+  { statut: 'FAD 1h',              label: 'FAD Complément', time: '1h dist.',      bg: '#EDE9FE', fg: '#6D28D9' },
 ]
 
 // ── Fiche emploi du temps ─────────────────────────────────────
