@@ -22,13 +22,17 @@ import { JOURS_SEMAINE } from '@/types/planning'
 const JOURS_MON_VEN: JourSemaine[] = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
 
 const HORAIRES_SLOTS: { statut: StatutFixe; label: string; time: string; bg: string; fg: string }[] = [
-  { statut: 'Matin FP S1',      label: 'Matin S1',       time: '08h30 – 11h00', bg: '#EFF6FF', fg: '#1D4ED8' },
-  { statut: 'Matin FP S2',      label: 'Matin S2',       time: '11h00 – 13h30', bg: '#DBEAFE', fg: '#1E40AF' },
-  { statut: 'Après-midi FP S1', label: 'Après-midi S1',  time: '13h30 – 16h00', bg: '#FFF7ED', fg: '#C2410C' },
-  { statut: 'Après-midi FP S2', label: 'Après-midi S2',  time: '16h00 – 18h30', bg: '#FFFBEB', fg: '#92400E' },
-  { statut: 'FAD Matin',        label: 'FAD Matin',      time: '2h30 dist.',    bg: '#F5F3FF', fg: '#5B21B6' },
-  { statut: 'FAD Après-midi',   label: 'FAD Après-midi', time: '2h30 dist.',    bg: '#EDE9FE', fg: '#4C1D95' },
-  { statut: 'FAD 1h',           label: 'FAD Complément', time: '1h dist.',      bg: '#FAF5FF', fg: '#6B21A8' },
+  { statut: 'Matin FP S1',         label: 'Matin S1',        time: '08h30 – 11h00', bg: '#EFF6FF', fg: '#1D4ED8' },
+  { statut: 'Matin FP S2',         label: 'Matin S2',        time: '11h00 – 13h30', bg: '#DBEAFE', fg: '#1E40AF' },
+  { statut: 'Après-midi FP S1',    label: 'Après-midi S1',   time: '13h30 – 16h00', bg: '#F0FDF4', fg: '#15803D' },
+  { statut: 'Après-midi FP S2',    label: 'Après-midi S2',   time: '16h00 – 18h30', bg: '#DCFCE7', fg: '#166534' },
+  { statut: 'FAD Matin S1',        label: 'FAD 08h30–11h',   time: '08h30 – 11h00', bg: '#F0FDFA', fg: '#0D9488' },
+  { statut: 'FAD Matin S2',        label: 'FAD 11h–13h30',   time: '11h00 – 13h30', bg: '#CCFBF1', fg: '#0F766E' },
+  { statut: 'FAD Après-midi S1',   label: 'FAD 13h30–16h',   time: '13h30 – 16h00', bg: '#E0F7FA', fg: '#0E7490' },
+  { statut: 'FAD Après-midi S2',   label: 'FAD 16h–18h30',   time: '16h00 – 18h30', bg: '#B2EBF2', fg: '#0C5E74' },
+  { statut: 'FAD Matin',           label: 'FAD Matin',       time: '2h30 dist.',    bg: '#F0FDFA', fg: '#0D9488' },
+  { statut: 'FAD Après-midi',      label: 'FAD Après-midi',  time: '2h30 dist.',    bg: '#CCFBF1', fg: '#0F766E' },
+  { statut: 'FAD 1h',              label: 'FAD Complément',  time: '1h dist.',      bg: '#F0FDFA', fg: '#0D9488' },
 ]
 
 // ── Fiche emploi du temps ─────────────────────────────────────
@@ -94,16 +98,19 @@ function FormateurScheduleModal({
                       <div className="text-[10px] font-mono text-muted-foreground pl-4">{slot.time}</div>
                     </td>
                     {JOURS_SEMAINE.map(jour => {
-                      const row = rows.find(r => r.jour_semaine === jour && r.statut === slot.statut)
-                      const groupeNom = row ? (groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom ?? null) : null
+                      const fusionRows = rows.filter(r => r.jour_semaine === jour && r.statut === slot.statut)
+                      const groupesNoms = fusionRows
+                        .map(r => groupesFormation.find(g => g.id === r.groupe_formation_id)?.nom)
+                        .filter(Boolean) as string[]
+                      const groupeDisplay = groupesNoms.length > 0 ? groupesNoms.join(' · ') : null
                       return (
                         <td key={jour} className={`px-2 py-3 text-center align-middle ${jour === 'Samedi' ? 'bg-emerald-50/30' : ''}`}>
-                          {row ? (
+                          {fusionRows.length > 0 ? (
                             <div className="rounded-lg px-2 py-2 inline-flex flex-col items-center gap-1 min-w-[76px] border"
                               style={{ backgroundColor: slot.bg, borderColor: slot.fg + '40' }}>
                               <span className="text-[9px] font-bold font-mono tracking-tight" style={{ color: slot.fg }}>{slot.time}</span>
-                              {groupeNom
-                                ? <span className="text-[12px] font-extrabold leading-tight text-center" style={{ color: slot.fg }}>{groupeNom}</span>
+                              {groupeDisplay
+                                ? <span className="text-[11px] font-extrabold leading-tight text-center" style={{ color: slot.fg }}>{groupeDisplay}</span>
                                 : <span className="text-[10px] text-muted-foreground/40 italic">—</span>
                               }
                             </div>
