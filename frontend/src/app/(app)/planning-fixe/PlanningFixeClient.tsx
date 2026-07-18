@@ -511,20 +511,34 @@ function StandardView({
   }
 
   // Nombre total de sous-séances travaillées Lun-Ven
+  // Les FAD fusionnés génèrent plusieurs lignes DB (1 par groupe) pour le même créneau.
+  // On déduplique par (jour, statut) pour compter 1 séance par créneau, pas par groupe.
+  const FAD_STATUTS_ALL = ['FAD Matin S1','FAD Matin S2','FAD Après-midi S1','FAD Après-midi S2','FAD Matin','FAD Après-midi','FAD 1h']
+
+  function deduplicatedCount(rows: PlanningFixe[]): number {
+    const fpRows = rows.filter(p => !FAD_STATUTS_ALL.includes(p.statut))
+    const fadKeys = new Set(
+      rows
+        .filter(p => FAD_STATUTS_ALL.includes(p.statut))
+        .map(p => `${p.jour_semaine}:${p.statut}`)
+    )
+    return fpRows.length + fadKeys.size
+  }
+
   function countSeancesMonVen(formateurId: string): number {
-    return planning.filter(p =>
+    return deduplicatedCount(planning.filter(p =>
       p.formateur_id === formateurId &&
       JOURS_MON_VEN.includes(p.jour_semaine as JourSemaine) &&
       STATUTS_TRAVAIL.includes(p.statut)
-    ).length
+    ))
   }
 
   // Nombre total de sous-séances travaillées toute la semaine
   function countSeances(formateurId: string): number {
-    return planning.filter(p =>
+    return deduplicatedCount(planning.filter(p =>
       p.formateur_id === formateurId &&
       STATUTS_TRAVAIL.includes(p.statut)
-    ).length
+    ))
   }
 
   // Taux d'occupation : sous-créneaux physiques FP saisis / 24
