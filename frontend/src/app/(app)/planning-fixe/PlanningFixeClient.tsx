@@ -834,14 +834,17 @@ function StandardView({
                     const weeklyFad1hRow = planning.find(p =>
                       p.formateur_id === formateur.id && p.statut === 'FAD 1h'
                     )
-                    // Séances présentiel (FP) — cible 4, samedi + statuts legacy inclus
-                    const FP_ALL_STATUTS: StatutFixe[] = [
-                      'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
-                      'Matin', 'Après-midi', // legacy
-                    ]
-                    const weeklyPresentielDays = planning.filter(
-                      p => p.formateur_id === formateur.id && FP_ALL_STATUTS.includes(p.statut)
-                    ).length
+                    // Demi-jours présentiel (FP) — cible 4 (max 2 jours × 2 demi-jours)
+                    // Matin FP S1 + Matin FP S2 sur le même jour = 1 demi-jour "matin"
+                    const fpSlotType = (s: StatutFixe): 'mat' | 'apm' | null =>
+                      ['Matin FP S1', 'Matin FP S2', 'Matin'].includes(s) ? 'mat'
+                      : ['Après-midi FP S1', 'Après-midi FP S2', 'Après-midi'].includes(s) ? 'apm'
+                      : null
+                    const weeklyPresentielDays = new Set(
+                      planning
+                        .filter(p => p.formateur_id === formateur.id)
+                        .flatMap(p => { const t = fpSlotType(p.statut); return t ? [`${p.jour_semaine}:${t}`] : [] })
+                    ).size
                     const satHasSession = planning.some(p =>
                       p.formateur_id === formateur.id && p.jour_semaine === 'Samedi'
                     )
