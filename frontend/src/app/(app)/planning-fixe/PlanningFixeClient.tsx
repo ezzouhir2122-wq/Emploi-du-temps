@@ -296,13 +296,13 @@ function decodeValue(value: string): { statut: StatutFixe; salleId: string | nul
 // Badge séances/semaine
 function SeancesBadge({ count }: { count: number }) {
   const color = count === MAX_SEANCES
-    ? 'bg-emerald-100 text-emerald-700'
+    ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300'
     : count > MAX_SEANCES
-    ? 'bg-red-100 text-red-600'
-    : 'bg-amber-100 text-amber-700'
+    ? 'bg-red-100 text-red-600 ring-1 ring-red-300'
+    : 'bg-amber-50 text-amber-600'
   return (
-    <span className={`ml-1.5 text-[9px] font-mono px-1 rounded ${color}`}>
-      {count}/{MAX_SEANCES}
+    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${color}`}>
+      {count}/{MAX_SEANCES} séances
     </span>
   )
 }
@@ -834,20 +834,19 @@ function StandardView({
                     const weeklyFad1hRow = planning.find(p =>
                       p.formateur_id === formateur.id && p.statut === 'FAD 1h'
                     )
-                    // Jours présentiel (FP) — cible 4, samedi inclus
-                    const satHasFP = planning.some(p =>
-                      p.formateur_id === formateur.id && p.jour_semaine === 'Samedi' &&
-                      STATUTS_PHYSIQUES_FP.includes(p.statut)
-                    )
+                    // Jours présentiel (FP) — cible 4, samedi + statuts legacy inclus
+                    const FP_ALL_STATUTS: StatutFixe[] = [
+                      'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
+                      'Matin', 'Après-midi', // legacy
+                    ]
+                    const weeklyPresentielDays = new Set(
+                      planning
+                        .filter(p => p.formateur_id === formateur.id && FP_ALL_STATUTS.includes(p.statut))
+                        .map(p => p.jour_semaine)
+                    ).size
                     const satHasSession = planning.some(p =>
                       p.formateur_id === formateur.id && p.jour_semaine === 'Samedi'
                     )
-                    const weeklyPresentielDays = JOURS_MON_VEN.filter(j =>
-                      planning.some(p =>
-                        p.formateur_id === formateur.id && p.jour_semaine === j &&
-                        STATUTS_PHYSIQUES_FP.includes(p.statut)
-                      )
-                    ).length + (satHasFP ? 1 : 0)
                     // Jours vides (Repos) sur toute la semaine Lun–Sam
                     // Quand le samedi est travaillé, 2 jours vides en semaine sont tolérés
                     const weeklyReposCount =
