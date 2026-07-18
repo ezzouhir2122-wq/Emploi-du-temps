@@ -834,20 +834,27 @@ function StandardView({
                     const weeklyFad1hRow = planning.find(p =>
                       p.formateur_id === formateur.id && p.statut === 'FAD 1h'
                     )
-                    // Jours présentiel (FP) — cible 4
+                    // Jours présentiel (FP) — cible 4, samedi inclus
+                    const satHasFP = planning.some(p =>
+                      p.formateur_id === formateur.id && p.jour_semaine === 'Samedi' &&
+                      STATUTS_PHYSIQUES_FP.includes(p.statut)
+                    )
+                    const satHasSession = planning.some(p =>
+                      p.formateur_id === formateur.id && p.jour_semaine === 'Samedi'
+                    )
                     const weeklyPresentielDays = JOURS_MON_VEN.filter(j =>
                       planning.some(p =>
                         p.formateur_id === formateur.id && p.jour_semaine === j &&
-                        (p.statut === 'Matin FP S1' || p.statut === 'Matin FP S2' ||
-                         p.statut === 'Après-midi FP S1' || p.statut === 'Après-midi FP S2')
+                        STATUTS_PHYSIQUES_FP.includes(p.statut)
                       )
-                    ).length
-                    // Jours vides (Repos) sur toute la semaine Lun–Sam — max 1 autorisé
+                    ).length + (satHasFP ? 1 : 0)
+                    // Jours vides (Repos) sur toute la semaine Lun–Sam
+                    // Quand le samedi est travaillé, 2 jours vides en semaine sont tolérés
                     const weeklyReposCount =
                       JOURS_MON_VEN.filter(j =>
                         !planning.some(p => p.formateur_id === formateur.id && p.jour_semaine === j)
                       ).length +
-                      (!planning.some(p => p.formateur_id === formateur.id && p.jour_semaine === 'Samedi') ? 1 : 0)
+                      (!satHasSession ? 1 : 0)
 
                     return (
                       <tr key={formateur.id} className="hover:bg-muted/30 transition-colors">
@@ -1014,8 +1021,8 @@ function StandardView({
 
                           // Cellule vide = Repos (alias de isEmptyDay, déclaré plus haut)
                           const isEmpty = isEmptyDay
-                          // Repos excédentaire : Lun–Sam combiné, si >1 jour vide en tout
-                          const reposExcedentaire = !isSamedi && isEmpty && weeklyReposCount > 1
+                          // Repos excédentaire : si >1 jour vide (ou >2 si samedi travaillé)
+                          const reposExcedentaire = !isSamedi && isEmpty && weeklyReposCount > (satHasSession ? 2 : 1)
                           // Salle complète ce jour (FP pris par 2 autres formateurs, présentiel impossible)
                           // → Ne s'applique pas le samedi (rotation : chaque formateur a son propre samedi)
                           const salleCompleteCeJour = !isSamedi && isEmpty && !hasFadAny && matinFPPris && pmFPPris && weeklyPresentielDays < 4
