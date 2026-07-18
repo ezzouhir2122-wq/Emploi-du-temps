@@ -18,7 +18,7 @@ import type {
   Formateur, Groupe, Salle, PlanningFixe, Scenario,
   JourSemaine, StatutFixe, RotationSamediConfig, CycleReference, StatutSamedi, SemaineCycle,
 } from '@/types/planning'
-import { JOURS_SEMAINE, STATUTS_FIXES, STATUT_TIMES } from '@/types/planning'
+import { JOURS_SEMAINE, STATUTS_FIXES, STATUT_TIMES, STATUTS_TRAVAIL as STATUTS_TRAVAIL_BASE, DUREE_HEURES } from '@/types/planning'
 import { getMoisCycle, getSamedisDuMois, parseISODate, toISODateString } from '@/lib/rotation'
 
 const MOIS_LABELS = [
@@ -34,12 +34,8 @@ const ROTATION_SUIVANTE: Record<StatutSamedi, StatutSamedi> = {
   'Repos': 'Matin',
 }
 
-// Statuts qui comptent comme une séance travaillée
-const STATUTS_TRAVAIL: StatutFixe[] = [
-  'Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2',
-  'FAD Matin', 'FAD Après-midi', 'FAD 1h',
-  'Matin', 'Après-midi', 'Distance', 'Distance Matin', 'Distance Après-midi', // legacy
-]
+// Statuts qui comptent comme une séance travaillée (source canonique : types/planning.ts)
+const STATUTS_TRAVAIL = STATUTS_TRAVAIL_BASE
 // Statuts physiques (occupent la salle)
 const STATUTS_PHYSIQUES_FP: StatutFixe[] = ['Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2']
 const MAX_SEANCES = 10      // 5 jours × 2 sous-séances/jour
@@ -827,7 +823,13 @@ function StandardView({
                     const weeklyFad2h30 = new Set(
                       planning
                         .filter(p => p.formateur_id === formateur.id && FAD_2H30_STATUTS.includes(p.statut))
-                        .map(p => `${p.jour_semaine}:${p.statut}`)
+                        .map(p => {
+                          // Normalise les statuts legacy pour éviter double-comptage avec les nouveaux
+                          const norm = p.statut === 'FAD Matin' ? 'FAD Matin S1'
+                            : p.statut === 'FAD Après-midi' ? 'FAD Après-midi S1'
+                            : p.statut
+                          return `${p.jour_semaine}:${norm}`
+                        })
                     ).size
                     const weeklyFad1hRow = planning.find(p =>
                       p.formateur_id === formateur.id && p.statut === 'FAD 1h'
@@ -886,16 +888,7 @@ function StandardView({
                               totalHeures={
                                 planning
                                   .filter(p => p.formateur_id === formateur.id)
-                                  .reduce((acc, p) => {
-                                    const duree: Partial<Record<string, number>> = {
-                                      'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
-                                      'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
-                                      'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
-                                      'Matin': 5, 'Après-midi': 5, 'Distance': 5,
-                                      'Distance Matin': 2.5, 'Distance Après-midi': 2.5,
-                                    }
-                                    return acc + (duree[p.statut] ?? 0)
-                                  }, 0)
+                                  .reduce((acc, p) => acc + (DUREE_HEURES[p.statut] ?? 0), 0)
                               }
                               dateGeneration={new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
                             />
@@ -957,7 +950,7 @@ function StandardView({
                           const showFad1hSlot = !!fadHRow || (canAddFad1h && hasFadAny)
                           const showFadBlock  = !isSamedi && (
                             hasFadAny || showFad1hSlot ||
-                            (canAddFad2h30 && (!blockFpMatS1 || !blockFpMatS2 || !blockFpPmS1 || !blockFpPmS2))
+                            (canAddFad2h30 && (!ms1 || !ms2 || !ps1 || !ps2))
                           )
 
                           // Helper: groupe picker inline
@@ -1043,10 +1036,10 @@ function StandardView({
                                         ? renderFPSlotFilled(ms1, '08h30–11h00', 'bg-blue-50', 'text-blue-700', 'blue-300')
                                         : ((!matinFPPris || isSamedi) && canAdd && renderFPSlotAdd('Matin FP S1', '08h30–11h00', 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-dashed border-blue-300'))
                                       )}
-                                      {!blockFpMatS2 && (ms1 || ms2 || blockFpMatS1) && (
+                                      {!blockFpMatS2 && (ms1 || ms2) && (
                                         ms2
                                           ? renderFPSlotFilled(ms2, '11h00–13h30', 'bg-blue-50/60', 'text-blue-600', 'blue-200')
-                                          : ((!matinFPPris || isSamedi) && canAdd && (ms1 || blockFpMatS1) && renderFPSlotAdd('Matin FP S2', '11h00–13h30', 'bg-blue-50/60 text-blue-500 hover:bg-blue-100 border border-dashed border-blue-200'))
+                                          : ((!matinFPPris || isSamedi) && canAdd && ms1 && renderFPSlotAdd('Matin FP S2', '11h00–13h30', 'bg-blue-50/60 text-blue-500 hover:bg-blue-100 border border-dashed border-blue-200'))
                                       )}
                                     </div>
                                   </div>

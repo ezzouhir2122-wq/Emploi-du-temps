@@ -15,7 +15,7 @@ import type {
   Pole, Salle, Formateur, PlanningFixe, Groupe,
   JourSemaine, StatutFixe,
 } from '@/types/planning'
-import { JOURS_SEMAINE } from '@/types/planning'
+import { JOURS_SEMAINE, DUREE_HEURES } from '@/types/planning'
 
 // ── Constantes ────────────────────────────────────────────────
 
@@ -695,12 +695,6 @@ export function PlanningScenarioCClient({
 
   // ── Génération PDF ───────────────────────────────────────
 
-  const DUREE_PDF: Partial<Record<StatutFixe, number>> = {
-    'Matin FP S1': 2.5, 'Matin FP S2': 2.5,
-    'Après-midi FP S1': 2.5, 'Après-midi FP S2': 2.5,
-    'FAD Matin': 2.5, 'FAD Après-midi': 2.5, 'FAD 1h': 1,
-  }
-
   async function openGroupePDF(groupe: Groupe, poleNom: string) {
     const key = `groupe-${groupe.id}`
     if (pdfLoadingKey) return
@@ -712,7 +706,7 @@ export function PlanningScenarioCClient({
         statut: p.statut,
         formateur_nom: formateurs.find(f => f.id === p.formateur_id)?.nom ?? null,
       }))
-      const totalHeures = rows.reduce((acc, p) => acc + (DUREE_PDF[p.statut] ?? 0), 0)
+      const totalHeures = rows.reduce((acc, p) => acc + (DUREE_HEURES[p.statut] ?? 0), 0)
 
       const [{ pdf }, { createElement }, { GroupePlanningPDF }] = await Promise.all([
         import('@react-pdf/renderer'),
