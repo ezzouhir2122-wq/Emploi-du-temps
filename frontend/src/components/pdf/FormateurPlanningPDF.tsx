@@ -142,7 +142,7 @@ const s = StyleSheet.create({
   infoValueSub: { fontSize: 7.5, color: TEXT_SUB, marginTop: 1 },
 
   // ── Table ──
-  tableWrap: { paddingHorizontal: 16, paddingTop: 12, flex: 1 },
+  tableWrap: { paddingHorizontal: 16, paddingTop: 8, flex: 1 },
   tableHeader: { flexDirection: 'row', marginBottom: 3 },
   slotColHead: { width: 84 },
   dayColHead: { flex: 1, marginLeft: 3 },
@@ -162,7 +162,7 @@ const s = StyleSheet.create({
   },
   dayHeaderText: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#FFFFFF' },
 
-  slotRow: { flexDirection: 'row', marginBottom: 3 },
+  slotRow: { flexDirection: 'row', marginBottom: 2 },
   slotLabel: { width: 84, paddingRight: 6, justifyContent: 'center', paddingTop: 2 },
   slotDot: { width: 6, height: 6, borderRadius: 3, marginBottom: 3 },
   slotLabelText: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#374151' },
@@ -170,10 +170,10 @@ const s = StyleSheet.create({
 
   cell: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 40,
     marginLeft: 3,
     borderRadius: 4,
-    padding: 5,
+    padding: 4,
     borderWidth: 1,
   },
   cellTypeTag: {
@@ -196,7 +196,7 @@ const s = StyleSheet.create({
   },
   cellRepos: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 40,
     marginLeft: 3,
     borderRadius: 4,
     backgroundColor: SLATE_LIGHT,
@@ -213,7 +213,7 @@ const s = StyleSheet.create({
   summaryBar: {
     flexDirection: 'row',
     marginHorizontal: 16,
-    marginTop: 10,
+    marginTop: 6,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 6,
@@ -221,7 +221,7 @@ const s = StyleSheet.create({
   },
   summaryCell: {
     flex: 1,
-    paddingVertical: 7,
+    paddingVertical: 5,
     paddingHorizontal: 10,
     borderRightWidth: 1,
     borderRightColor: BORDER,
@@ -229,7 +229,7 @@ const s = StyleSheet.create({
   },
   summaryCellLast: {
     flex: 1,
-    paddingVertical: 7,
+    paddingVertical: 5,
     paddingHorizontal: 10,
     alignItems: 'center',
   },
@@ -245,17 +245,17 @@ const s = StyleSheet.create({
   sigSection: {
     flexDirection: 'row',
     marginHorizontal: 16,
-    marginTop: 12,
-    gap: 12,
+    marginTop: 8,
+    gap: 16,
   },
   sigBox: {
     flex: 1,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 6,
-    padding: 10,
+    padding: 8,
   },
-  sigTitle: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: TEXT_MAIN, marginBottom: 28 },
+  sigTitle: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: TEXT_MAIN, marginBottom: 20 },
   sigLine: { borderTopWidth: 1, borderTopColor: BORDER, marginTop: 4 },
   sigName: { fontSize: 6.5, color: SLATE, marginTop: 4, textAlign: 'center' },
 
@@ -479,12 +479,7 @@ export function FormateurPlanningPDF({
             <Text style={s.sigName}>{formateurNom}</Text>
           </View>
           <View style={s.sigBox}>
-            <Text style={s.sigTitle}>Le Chef de Département</Text>
-            <View style={s.sigLine} />
-            <Text style={s.sigName}>Signature & Cachet</Text>
-          </View>
-          <View style={s.sigBox}>
-            <Text style={s.sigTitle}>Le / La Directeur(trice)</Text>
+            <Text style={s.sigTitle}>Le Directeur EFP</Text>
             <View style={s.sigLine} />
             <Text style={s.sigName}>Signature & Cachet</Text>
           </View>
