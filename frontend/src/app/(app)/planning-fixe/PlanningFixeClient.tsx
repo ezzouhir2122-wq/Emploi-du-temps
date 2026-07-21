@@ -880,10 +880,10 @@ function StandardView({
                             <span className="truncate text-[11px] font-semibold">{formateur.nom}</span>
                             <SeancesBadge count={seances} />
                             <div className="flex gap-1 mt-0.5 flex-wrap">
-                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyPresentielDays >= 4 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-semibold ${weeklyPresentielDays >= 4 ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300' : 'bg-slate-100 text-slate-400'}`}>
                                 Prés. {weeklyPresentielDays}/4
                               </span>
-                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${weeklyFad2h30 >= 1 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-semibold ${weeklyFad2h30 >= 2 ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300' : weeklyFad2h30 >= 1 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>
                                 FAD {weeklyFad2h30}/2
                               </span>
                             </div>
