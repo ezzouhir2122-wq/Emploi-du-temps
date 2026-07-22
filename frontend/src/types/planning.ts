@@ -128,6 +128,36 @@ export interface PlanningFixe {
   formateur?: Formateur
 }
 
+export interface AffectationTemplate {
+  id: string
+  filiere_id: string
+  module: string
+  masse_horaire: number
+  semestre: string
+  mode: string
+  ordre: number
+  created_at: string
+  filiere?: Pole
+}
+
+export interface AffectationModule {
+  id: string
+  filiere_id: string
+  groupe_id: string
+  annee: string
+  module: string
+  masse_horaire: number
+  semestre: string
+  mode: string
+  ordre: number
+  formateur_id: string | null
+  etat: 'Non affecté' | 'Affecté'
+  created_at: string
+  filiere?: Pole
+  groupe?: Groupe
+  formateur?: Formateur
+}
+
 export interface RotationSamediConfig {
   id: string
   groupe_id: string | null

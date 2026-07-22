@@ -11,15 +11,17 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
-import { Settings, Plus, Pencil, Power, Building2, Users, DoorOpen, GraduationCap, Upload, Trash2, Check, X } from 'lucide-react'
+import { Settings, Plus, Pencil, Power, Building2, Users, DoorOpen, GraduationCap, Upload, Trash2, Check, X, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Pole, Salle, Groupe, Formateur } from '@/types/planning'
+import type { Pole, Salle, Groupe, Formateur, AffectationTemplate } from '@/types/planning'
+import { ModelesAffectation } from './ModelesAffectation'
 
 interface Props {
   poles: Pole[]
   salles: Salle[]
   groupes: Groupe[]
   formateurs: Formateur[]
+  templates: AffectationTemplate[]
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -1198,14 +1200,14 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
 
 // ── Composant principal ───────────────────────────────────────
 
-export function ParametresClient({ poles, salles, groupes, formateurs }: Props) {
+export function ParametresClient({ poles, salles, groupes, formateurs, templates }: Props) {
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
         <PageHeader
           icon={Settings}
           title="Paramètres"
-          subtitle="Gérez les pôles, formateurs, salles et groupes de formation."
+          subtitle="Gérez les pôles, formateurs, salles, groupes et modèles d'affectation."
           badge="Config"
         />
         <PageDivider />
@@ -1225,6 +1227,9 @@ export function ParametresClient({ poles, salles, groupes, formateurs }: Props) 
           <TabsTrigger value="groupes" className="gap-2 px-4">
             <GraduationCap className="h-4 w-4" /> Groupes
           </TabsTrigger>
+          <TabsTrigger value="modeles" className="gap-2 px-4">
+            <BookOpen className="h-4 w-4" /> Modèles d'affectation
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="poles">
@@ -1241,6 +1246,10 @@ export function ParametresClient({ poles, salles, groupes, formateurs }: Props) 
 
         <TabsContent value="groupes">
           <GroupesTab initGroupes={groupes} poles={poles} salles={salles} />
+        </TabsContent>
+
+        <TabsContent value="modeles">
+          <ModelesAffectation poles={poles} templates={templates} />
         </TabsContent>
       </Tabs>
     </div>
