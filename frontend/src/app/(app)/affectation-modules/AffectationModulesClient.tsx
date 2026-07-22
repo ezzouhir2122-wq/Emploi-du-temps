@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
-import { BookOpen, Zap, RefreshCw, AlertTriangle, User, Loader2 } from 'lucide-react'
+import { BookOpen, Zap, RefreshCw, AlertTriangle, Loader2, ArrowRight } from 'lucide-react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import type { Pole, Groupe, Formateur, AffectationModule, AffectationTemplate } from '@/types/planning'
@@ -200,7 +201,7 @@ export function AffectationModulesClient({ poles, groupes, formateurs, affectati
             <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Année :</label>
             <Select value={annee} onValueChange={v => v && setAnnee(v)}>
               <SelectTrigger className="h-8 w-32 text-xs">
-                <SelectValue />
+                <span>{annee}</span>
               </SelectTrigger>
               <SelectContent>
                 {annees.map(a => <SelectItem key={a} value={a} className="text-xs">{a}</SelectItem>)}
@@ -212,14 +213,18 @@ export function AffectationModulesClient({ poles, groupes, formateurs, affectati
             <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Filière :</label>
             <Select value={filiereId} onValueChange={v => v && setFiliereId(v)}>
               <SelectTrigger className="h-8 w-52 text-xs">
-                <SelectValue placeholder="Toutes les filières" />
+                <span className="truncate">
+                  {filiereId === 'all'
+                    ? 'Toutes les filières'
+                    : poles.find(p => p.id === filiereId)?.nom ?? 'Filière'}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-xs">Toutes les filières</SelectItem>
                 {poles.map(p => (
                   <SelectItem key={p.id} value={p.id} className="text-xs">
                     {p.nom}
-                    {templatesByFiliere[p.id] ? ` (${templatesByFiliere[p.id]} modules)` : ' — pas de modèle'}
+                    {templatesByFiliere[p.id] ? ` · ${templatesByFiliere[p.id]} modules` : ' — aucun modèle'}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -241,14 +246,34 @@ export function AffectationModulesClient({ poles, groupes, formateurs, affectati
       {/* ── Tableau ── */}
       <div className="flex-1 overflow-auto px-6 py-4">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <BookOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <p className="text-sm font-medium text-muted-foreground">Aucune affectation pour {annee}</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">
-              {templates.length === 0
-                ? 'Importez d\'abord un modèle dans Paramètres → Modèles d\'affectation'
-                : 'Cliquez sur « Générer les affectations » pour démarrer'}
-            </p>
+          <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+            <BookOpen className="h-12 w-12 text-muted-foreground/30" />
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Aucune affectation pour {annee}</p>
+              {templates.length === 0 ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-6 py-4 text-left max-w-sm mx-auto">
+                  <p className="text-xs font-semibold text-amber-800 mb-2">Étapes à suivre :</p>
+                  <ol className="text-xs text-amber-700 space-y-1.5 list-decimal list-inside">
+                    <li>Préparez un fichier Excel avec les colonnes :<br/>
+                      <span className="font-mono text-[10px]">Filière · Module · Masse horaire · Semestre · Mode · Ordre</span>
+                    </li>
+                    <li>Allez dans <strong>Paramètres → Modèles d'affectation</strong> et importez le fichier</li>
+                    <li>Revenez ici et cliquez sur <strong>Générer les affectations</strong></li>
+                  </ol>
+                  <Link
+                    href="/parametres?tab=modeles"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors"
+                  >
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    Aller dans Paramètres → Modèles
+                  </Link>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  Sélectionnez une filière et cliquez sur « Générer les affectations »
+                </p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="space-y-6">

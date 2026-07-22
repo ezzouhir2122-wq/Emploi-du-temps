@@ -1201,6 +1201,11 @@ function GroupesTab({ initGroupes, poles, salles }: { initGroupes: Groupe[]; pol
 // ── Composant principal ───────────────────────────────────────
 
 export function ParametresClient({ poles, salles, groupes, formateurs, templates }: Props) {
+  // Lire l'onglet depuis l'URL (?tab=modeles)
+  const defaultTab = typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('tab') ?? 'poles')
+    : 'poles'
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
@@ -1213,7 +1218,7 @@ export function ParametresClient({ poles, salles, groupes, formateurs, templates
         <PageDivider />
       </div>
 
-      <Tabs defaultValue="poles">
+      <Tabs defaultValue={defaultTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="poles" className="gap-2 px-4">
             <Building2 className="h-4 w-4" /> Pôles
