@@ -329,7 +329,7 @@ export function ModelesAffectation({ poles, templates: initTemplates }: Props) {
                       <div className="w-56 shrink-0">
                         <Select
                           value={mapping[fn] ?? 'none'}
-                          onValueChange={v => setMapping(prev => ({ ...prev, [fn]: v === 'none' ? '' : v }))}
+                          onValueChange={v => setMapping(prev => ({ ...prev, [fn]: v && v !== 'none' ? v : '' }))}
                         >
                           <SelectTrigger className="h-8 text-xs">
                             <span className="truncate">
