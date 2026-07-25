@@ -41,7 +41,7 @@ Un compte n'accède à l'app que si les deux sont franchies.
 
 ## Compte admin bootstrap
 Seedé par la migration `015_profiles.sql` :
-`ezzouhir2122@gmail.com` → `role='admin', statut='valide'`.
+`easydigia22@gmail.com` → `role='admin', statut='valide'`.
 Un nouvel admin se crée en validant un compte avec le rôle Admin depuis
 `/parametres/utilisateurs`.
 

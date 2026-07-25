@@ -72,4 +72,4 @@ INSERT INTO profiles (id, email, statut)
 
 -- 6) Bootstrap admin (sinon personne ne peut valider les autres)
 UPDATE profiles SET role = 'admin', statut = 'valide'
-  WHERE email = 'ezzouhir2122@gmail.com';
+  WHERE email = 'easydigia22@gmail.com';
