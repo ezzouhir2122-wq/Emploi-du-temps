@@ -21,6 +21,25 @@ DROP POLICY IF EXISTS "auth_write_templates" ON affectation_templates;
 DROP POLICY IF EXISTS "auth_read_affectat"   ON affectations_modules;
 DROP POLICY IF EXISTS "auth_write_affectat"  ON affectations_modules;
 
+-- ---- Supprimer les NOUVELLES policies si déjà présentes (rend 016 ré-exécutable) ----
+DROP POLICY IF EXISTS "admin_all_salles"          ON salles;
+DROP POLICY IF EXISTS "formateur_read_salles"     ON salles;
+DROP POLICY IF EXISTS "admin_all_groupes"         ON groupes;
+DROP POLICY IF EXISTS "formateur_read_groupes"    ON groupes;
+DROP POLICY IF EXISTS "admin_all_formateurs"      ON formateurs;
+DROP POLICY IF EXISTS "formateur_read_formateurs" ON formateurs;
+DROP POLICY IF EXISTS "admin_all_cycle"           ON cycle_reference;
+DROP POLICY IF EXISTS "formateur_read_cycle"      ON cycle_reference;
+DROP POLICY IF EXISTS "admin_all_poles"           ON poles;
+DROP POLICY IF EXISTS "formateur_read_poles"      ON poles;
+DROP POLICY IF EXISTS "admin_all_scenarios"       ON scenarios;
+DROP POLICY IF EXISTS "admin_all_aff_tpl"         ON affectation_templates;
+DROP POLICY IF EXISTS "admin_all_aff_mod"         ON affectations_modules;
+DROP POLICY IF EXISTS "admin_all_planning"        ON planning_fixe;
+DROP POLICY IF EXISTS "formateur_read_planning"   ON planning_fixe;
+DROP POLICY IF EXISTS "admin_all_rotation"        ON rotation_samedi_config;
+DROP POLICY IF EXISTS "formateur_read_rotation"   ON rotation_samedi_config;
+
 -- ---- Tables de référence : admin = tout, formateur = lecture ----
 -- salles
 CREATE POLICY "admin_all_salles"      ON salles      FOR ALL    TO authenticated USING (is_admin()) WITH CHECK (is_admin());
