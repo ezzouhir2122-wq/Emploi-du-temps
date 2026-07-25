@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import Link from 'next/link'
 import { Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
@@ -189,6 +190,11 @@ export default function LoginPage() {
           {/* Footer */}
           <p className="mt-8 text-center text-xs text-gray-400">
             OFPPT — Office de la Formation Professionnelle et de la Promotion du Travail
+          </p>
+
+          <p className="mt-4 text-center text-sm text-gray-500">
+            Pas encore de compte ?{' '}
+            <Link href="/signup" className="font-semibold text-[#005FAD] hover:underline">Créer un compte</Link>
           </p>
         </div>
       </div>

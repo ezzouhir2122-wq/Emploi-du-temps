@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { CalendarDays, ChevronRight, Layers, RotateCcw, Users, Building2 } from 'lucide-react'
 import { PageHeader, PageDivider } from '@/components/layout/PageHeader'
+import { useRole } from '@/components/RoleProvider'
 import type { Pole, Salle, Formateur, PlanningFixe, TypeScenario } from '@/types/planning'
 
 // ── Config scénarios ───────────────────────────────────────────
@@ -78,6 +79,7 @@ function PoleCard({
   sessionsDuPole,
   onScenarioChange,
   loading,
+  isFormateur,
 }: {
   pole: Pole
   sallesDuPole: Salle[]
@@ -85,6 +87,7 @@ function PoleCard({
   sessionsDuPole: number
   onScenarioChange: (poleId: string, type: TypeScenario) => void
   loading: string | null
+  isFormateur: boolean
 }) {
   const scenario = getScenario(pole.scenario_type)
   const Icon = scenario.icon
@@ -165,22 +168,24 @@ function PoleCard({
           </div>
         )}
 
-        {/* ── Sélecteur scénario ── */}
-        <div className="space-y-1">
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Scénario d&apos;organisation
-          </label>
-          <select
-            value={pole.scenario_type}
-            onChange={e => onScenarioChange(pole.id, e.target.value as TypeScenario)}
-            disabled={isLoading}
-            className={`w-full text-xs rounded-lg border px-3 h-9 bg-white focus:outline-none focus:ring-2 focus:ring-[#005FAD]/30 transition-all ${scenario.border} ${scenario.color} font-medium`}
-          >
-            {SCENARIOS.map(s => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-        </div>
+        {/* ── Sélecteur scénario (admin uniquement) ── */}
+        {!isFormateur && (
+          <div className="space-y-1">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Scénario d&apos;organisation
+            </label>
+            <select
+              value={pole.scenario_type}
+              onChange={e => onScenarioChange(pole.id, e.target.value as TypeScenario)}
+              disabled={isLoading}
+              className={`w-full text-xs rounded-lg border px-3 h-9 bg-white focus:outline-none focus:ring-2 focus:ring-[#005FAD]/30 transition-all ${scenario.border} ${scenario.color} font-medium`}
+            >
+              {SCENARIOS.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* ── CTA ── */}
         {isReady ? (
@@ -189,7 +194,7 @@ function PoleCard({
             className={`mt-auto flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${scenario.bg} ${scenario.color} ${scenario.border} border hover:brightness-95`}
           >
             <Icon className="h-4 w-4" />
-            Saisir le planning
+            {isFormateur ? 'Voir le planning' : 'Saisir le planning'}
             <ChevronRight className="h-4 w-4 ml-auto opacity-60" />
           </Link>
         ) : (
@@ -209,6 +214,7 @@ export function PolesDashboardClient({ poles, salles, formateurs, planningFixe }
   const [polesState, setPolesState] = useState<Pole[]>(poles)
   const [loading, setLoading] = useState<string | null>(null)
   const supabase = createClient()
+  const { isFormateur } = useRole()
 
   async function handleScenarioChange(poleId: string, type: TypeScenario) {
     setLoading(poleId)
@@ -311,6 +317,7 @@ export function PolesDashboardClient({ poles, salles, formateurs, planningFixe }
                 sessionsDuPole={sessionsDuPole}
                 onScenarioChange={handleScenarioChange}
                 loading={loading}
+                isFormateur={isFormateur}
               />
             )
           })}

@@ -14,18 +14,30 @@ import {
   Download,
   LogOut,
   BookOpen,
+  Users,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useRole } from '@/components/RoleProvider'
 
-const navItems = [
-  { href: '/planning-fixe',        label: 'Planning Hebdomadaire', icon: CalendarDays,  desc: 'Lun–Sam · Rotation incluse', group: 'planning' },
-  { href: '/vue-mensuelle',        label: 'Vue mensuelle',         icon: CalendarRange, desc: 'Calendrier',                  group: 'planning' },
-  { href: '/suivi-equite',         label: 'Suivi équité',          icon: BarChart3,     desc: 'Compteurs',                   group: 'planning' },
-  { href: '/scenarios',            label: 'Scénarios',             icon: Layers,        desc: 'A / B / C',                   group: 'planning' },
-  { href: '/exports',              label: 'Exports',               icon: Download,      desc: 'Excel / CSV / PDF',           group: 'planning' },
-  { href: '/affectation-modules',  label: 'Affectation modules',   icon: BookOpen,      desc: 'Gestion pédagogique',         group: 'pedagogique' },
-  { href: '/parametres',           label: 'Paramètres',            icon: Settings,      desc: 'Config',                      group: 'config' },
+type NavItem = {
+  href: string
+  label: string
+  icon: React.ElementType
+  desc: string
+  group: 'planning' | 'pedagogique' | 'config'
+  adminOnly?: boolean
+}
+
+const navItems: NavItem[] = [
+  { href: '/planning-fixe',           label: 'Planning Hebdomadaire', icon: CalendarDays,  desc: 'Lun–Sam · Rotation incluse', group: 'planning' },
+  { href: '/vue-mensuelle',           label: 'Vue mensuelle',         icon: CalendarRange, desc: 'Calendrier',                  group: 'planning' },
+  { href: '/suivi-equite',            label: 'Suivi équité',          icon: BarChart3,     desc: 'Compteurs',                   group: 'planning',    adminOnly: true },
+  { href: '/scenarios',               label: 'Scénarios',             icon: Layers,        desc: 'A / B / C',                   group: 'planning',    adminOnly: true },
+  { href: '/exports',                 label: 'Exports',               icon: Download,      desc: 'Excel / CSV / PDF',           group: 'planning',    adminOnly: true },
+  { href: '/affectation-modules',     label: 'Affectation modules',   icon: BookOpen,      desc: 'Gestion pédagogique',         group: 'pedagogique', adminOnly: true },
+  { href: '/parametres',              label: 'Paramètres',            icon: Settings,      desc: 'Config',                      group: 'config',      adminOnly: true },
+  { href: '/parametres/utilisateurs', label: 'Utilisateurs',          icon: Users,         desc: 'Comptes & rôles',             group: 'config',      adminOnly: true },
 ]
 
 function NavLink({ href, label, icon: Icon, desc, pathname }: {
@@ -59,6 +71,8 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const { isFormateur } = useRole()
+  const visibleItems = navItems.filter(i => !(isFormateur && i.adminOnly))
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -96,23 +110,31 @@ export function Sidebar() {
         <p className="px-2 pt-0.5 pb-1.5 text-[8.5px] font-semibold uppercase tracking-widest text-white/30">
           Menu principal
         </p>
-        {navItems.filter(i => i.group === 'planning').map(({ href, label, icon: Icon, desc }) => (
+        {visibleItems.filter(i => i.group === 'planning').map(({ href, label, icon: Icon, desc }) => (
           <NavLink key={href} href={href} label={label} icon={Icon} desc={desc} pathname={pathname} />
         ))}
 
-        <p className="px-2 pt-3 pb-1.5 text-[8.5px] font-semibold uppercase tracking-widest text-white/30">
-          Gestion pédagogique
-        </p>
-        {navItems.filter(i => i.group === 'pedagogique').map(({ href, label, icon: Icon, desc }) => (
-          <NavLink key={href} href={href} label={label} icon={Icon} desc={desc} pathname={pathname} />
-        ))}
+        {visibleItems.some(i => i.group === 'pedagogique') && (
+          <>
+            <p className="px-2 pt-3 pb-1.5 text-[8.5px] font-semibold uppercase tracking-widest text-white/30">
+              Gestion pédagogique
+            </p>
+            {visibleItems.filter(i => i.group === 'pedagogique').map(({ href, label, icon: Icon, desc }) => (
+              <NavLink key={href} href={href} label={label} icon={Icon} desc={desc} pathname={pathname} />
+            ))}
+          </>
+        )}
 
-        <p className="px-2 pt-3 pb-1.5 text-[8.5px] font-semibold uppercase tracking-widest text-white/30">
-          Configuration
-        </p>
-        {navItems.filter(i => i.group === 'config').map(({ href, label, icon: Icon, desc }) => (
-          <NavLink key={href} href={href} label={label} icon={Icon} desc={desc} pathname={pathname} />
-        ))}
+        {visibleItems.some(i => i.group === 'config') && (
+          <>
+            <p className="px-2 pt-3 pb-1.5 text-[8.5px] font-semibold uppercase tracking-widest text-white/30">
+              Configuration
+            </p>
+            {visibleItems.filter(i => i.group === 'config').map(({ href, label, icon: Icon, desc }) => (
+              <NavLink key={href} href={href} label={label} icon={Icon} desc={desc} pathname={pathname} />
+            ))}
+          </>
+        )}
       </nav>
 
       {/* ── Footer ── */}
