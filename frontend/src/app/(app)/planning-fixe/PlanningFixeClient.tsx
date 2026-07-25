@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { CalendarDays, Info, RotateCcw, Wand2, ChevronDown, ChevronUp, Settings2, Play, Eye, X, FileDown, Users } from 'lucide-react'
 import { PDFDownloadButton } from '@/components/pdf/PDFDownloadButton'
+import { useRole } from '@/components/RoleProvider'
 import type {
   Formateur, Groupe, Salle, PlanningFixe, Scenario,
   JourSemaine, StatutFixe, RotationSamediConfig, CycleReference, StatutSamedi, SemaineCycle,
@@ -474,6 +475,7 @@ function StandardView({
   onAddSubSession, onRemoveSubSession, onGroupeChange, groupesFormation,
   rotationConfig, cycleReferences, previewAnnee, previewMois,
   onRotationStatut, onAutoRotation, onAncrageSave, onApplyRotation,
+  isFormateur,
 }: {
   salles: Salle[]
   groupes: Groupe[]
@@ -492,6 +494,7 @@ function StandardView({
   onAutoRotation: (salleId: string, formateursSalle: Formateur[]) => void
   onAncrageSave: (salleId: string, date: string, pos: SemaineCycle) => void
   onApplyRotation: (salleId: string, entries: { formateurId: string; statut: StatutSamedi }[]) => void
+  isFormateur: boolean
 }) {
   const [expandedSalles, setExpandedSalles] = useState<Set<string>>(new Set())
   const [viewFormateur, setViewFormateur] = useState<{ formateur: Formateur; salle: Salle } | null>(null)
@@ -773,15 +776,17 @@ function StandardView({
                   <FileDown className="h-3.5 w-3.5" />
                   {pdfLoadingKey === `salle-${salle.id}` ? 'Génération…' : 'PDF Salle'}
                 </button>
-                <Button
-                  size="sm" variant="outline"
-                  className={`h-7 text-xs gap-1.5 ${expanded ? 'bg-muted' : ''}`}
-                  onClick={() => toggleRotation(salle.id)}
-                >
-                  <Settings2 className="h-3.5 w-3.5" />
-                  Rotation Samedi
-                  {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </Button>
+                {!isFormateur && (
+                  <Button
+                    size="sm" variant="outline"
+                    className={`h-7 text-xs gap-1.5 ${expanded ? 'bg-muted' : ''}`}
+                    onClick={() => toggleRotation(salle.id)}
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                    Rotation Samedi
+                    {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -977,11 +982,16 @@ function StandardView({
                             (canAddFad2h30 && (!ms1 || !ms2 || !ps1 || !ps2))
                           )
 
-                          // Helper: groupe picker inline
+                          // Helper: groupe picker inline (read-only pour formateur)
                           const renderGroupePicker = (row: PlanningFixe, accentColor: string) => {
+                            const groupeNom = groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom
+                            if (isFormateur) {
+                              return groupeNom ? (
+                                <span className="block text-xs font-medium mt-1 truncate">{groupeNom}</span>
+                              ) : null
+                            }
                             const { disponibles: gDispo, indisponibles: gIndispo } =
                               getGroupesParDisponibilite(formateur.id, jour, row.statut, salle.pole_id, row.id)
-                            const groupeNom = groupesFormation.find(g => g.id === row.groupe_formation_id)?.nom
                             return (
                               <Select
                                 value={row.groupe_formation_id ?? '__none__'}
@@ -1020,21 +1030,25 @@ function StandardView({
                             <div className={`px-2 py-1.5 ${accentBg} rounded-sm`}>
                               <div className="flex items-center justify-between">
                                 <span className={`text-[9px] font-mono font-semibold ${accentText}`}>{time}</span>
-                                <button onClick={() => onRemoveSubSession(row.id)}
-                                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
+                                {!isFormateur && (
+                                  <button onClick={() => onRemoveSubSession(row.id)}
+                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 transition-colors text-sm leading-none" title="Supprimer">×</button>
+                                )}
                               </div>
                               {renderGroupePicker(row, `border-${accentBorder} bg-white/80 text-${accentText.replace('text-', '')}`)}
                             </div>
                           )
 
-                          // Helper: bouton + pour ajouter un slot FP
-                          const renderFPSlotAdd = (statut: StatutFixe, time: string, colorCls: string) => (
-                            <button onClick={() => onAddSubSession(formateur.id, jour, statut)}
-                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium transition-all hover:opacity-100 opacity-60 ${colorCls}`}>
-                              <span className="text-base leading-none">+</span>
-                              <span className="font-mono text-[10px]">{time}</span>
-                            </button>
-                          )
+                          // Helper: bouton + pour ajouter un slot FP (admin uniquement)
+                          const renderFPSlotAdd = isFormateur
+                            ? (_statut: StatutFixe, _time: string, _colorCls: string) => null
+                            : (statut: StatutFixe, time: string, colorCls: string) => (
+                              <button onClick={() => onAddSubSession(formateur.id, jour, statut)}
+                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium transition-all hover:opacity-100 opacity-60 ${colorCls}`}>
+                                <span className="text-base leading-none">+</span>
+                                <span className="font-mono text-[10px]">{time}</span>
+                              </button>
+                            )
 
                           // Cellule vide = Repos (alias de isEmptyDay, déclaré plus haut)
                           const isEmpty = isEmptyDay
@@ -1114,10 +1128,12 @@ function StandardView({
                                             {rows.map(row => (
                                               <div key={row.id} className="flex items-center gap-1 mt-0.5">
                                                 <div className="flex-1">{renderGroupePicker(row, `border-violet-300 bg-white/80 ${txt}`)}</div>
-                                                <button onClick={() => onRemoveSubSession(row.id)} className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
+                                                {!isFormateur && (
+                                                  <button onClick={() => onRemoveSubSession(row.id)} className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
+                                                )}
                                               </div>
                                             ))}
-                                            {rows.length < 3 && (
+                                            {!isFormateur && rows.length < 3 && (
                                               <button onClick={() => onAddSubSession(formateur.id, jour, statut)}
                                                 className={`w-full flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[9px] font-medium ${txt} hover:bg-violet-100 border border-dashed ${brd} mt-1 transition-all`}>
                                                 <span>+</span><span>Fusionner un groupe</span>
@@ -1125,7 +1141,7 @@ function StandardView({
                                             )}
                                           </div>
                                         )
-                                        if (canAddFad2h30) return (
+                                        if (!isFormateur && canAddFad2h30) return (
                                           <button key={statut} onClick={() => onAddSubSession(formateur.id, jour, statut)}
                                             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-medium ${bg} ${txt} hover:bg-violet-100 border border-dashed ${brd} opacity-70 hover:opacity-100 transition-all`}>
                                             <span className="text-base leading-none">+</span>
@@ -1141,16 +1157,18 @@ function StandardView({
                                           <div className="px-2 py-1.5 bg-violet-100 rounded-sm border border-violet-200">
                                             <div className="flex items-center justify-between">
                                               <span className="text-[9px] font-bold text-violet-700">Complément · 1h</span>
-                                              <button onClick={() => onRemoveSubSession(fadHRow.id)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
+                                              {!isFormateur && (
+                                                <button onClick={() => onRemoveSubSession(fadHRow.id)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-muted-foreground/40 hover:text-red-500 text-sm">×</button>
+                                              )}
                                             </div>
                                             {renderGroupePicker(fadHRow, 'border-violet-300 bg-white/80 text-violet-700')}
                                           </div>
-                                        ) : (
+                                        ) : !isFormateur ? (
                                           <button onClick={() => onAddSubSession(formateur.id, jour, 'FAD 1h')}
                                             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs font-bold bg-violet-50 text-violet-600 hover:bg-violet-100 border border-violet-300 transition-all shadow-sm">
                                             <span className="text-base leading-none">+</span><span>Complément · 1h</span>
                                           </button>
-                                        )
+                                        ) : null
                                       )}
                                     </div>
                                   </div>
@@ -1202,7 +1220,7 @@ function StandardView({
               <span className="flex items-center gap-1 ml-auto"><span className="bg-emerald-100 text-emerald-700 px-1 rounded font-mono text-[9px]">5/5</span> = séances/semaine complètes</span>
             </div>
 
-            {expanded && (
+            {expanded && !isFormateur && (
               <RotationSallePanel
                 salle={salle}
                 formateursSalle={formateursSalle}
@@ -1257,13 +1275,14 @@ function StandardView({
 
 function PoolMixedView({
   salles, formateurs, planning, saving,
-  onAssign,
+  onAssign, isFormateur,
 }: {
   salles: Salle[]
   formateurs: Formateur[]
   planning: PlanningFixe[]
   saving: Set<string>
   onAssign: (formateurId: string, jour: JourSemaine, value: string) => void
+  isFormateur: boolean
 }) {
   function getSlotsPris(jour: JourSemaine, salleId: string, excludeFormateurId: string): Set<StatutFixe> {
     const pris = new Set<StatutFixe>()
@@ -1402,49 +1421,55 @@ function PoolMixedView({
 
                     return (
                       <td key={jour} className={`px-2 py-2 text-center ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/40 bg-emerald-50/30' : ''}`}>
-                        <Select
-                          value={currentVal}
-                          onValueChange={val => onAssign(formateur.id, jour, val ?? '')}
-                          disabled={saving.has(key)}
-                        >
-                          <SelectTrigger className="h-8 w-[150px] text-xs mx-auto">
-                            <SelectValue>{renderCurrentValue(currentVal)}</SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {trop && (
-                              <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-orange-600 bg-orange-50 border-b">
-                                <Info className="h-3 w-3 shrink-0" />
-                                {seances}/{MAX_SEANCES} séances déjà atteint
-                              </div>
-                            )}
-                            {complete && optionsPhysiques.length === 0 && (
-                              <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b">
-                                <Info className="h-3 w-3 shrink-0" />
-                                Toutes les salles physiques sont occupées
-                              </div>
-                            )}
-                            {optionsPhysiques.map(opt => {
-                              const [, statut] = opt.value.split('|')
-                              return (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  <span className="flex items-center gap-1.5 text-xs">
-                                    <span className="text-muted-foreground font-mono">{opt.label.split(' · ')[0]}</span>
-                                    <span className="text-muted-foreground">·</span>
-                                    <StatutBadge statut={statut as StatutFixe} />
-                                  </span>
-                                </SelectItem>
-                              )
-                            })}
-                            {optionsPhysiques.length > 0 && <div className="h-px bg-border my-1" />}
-                            {!dejaDistance && !isSamedi && (
-                              <>
-                                <SelectItem value="Distance Matin"><StatutBadge statut="Distance Matin" /></SelectItem>
-                                <SelectItem value="Distance Après-midi"><StatutBadge statut="Distance Après-midi" /></SelectItem>
-                              </>
-                            )}
-                            <SelectItem value="Repos"><StatutBadge statut="Repos" /></SelectItem>
-                          </SelectContent>
-                        </Select>
+                        {isFormateur ? (
+                          <div className="h-8 w-[150px] text-xs mx-auto flex items-center justify-center">
+                            {renderCurrentValue(currentVal)}
+                          </div>
+                        ) : (
+                          <Select
+                            value={currentVal}
+                            onValueChange={val => onAssign(formateur.id, jour, val ?? '')}
+                            disabled={saving.has(key)}
+                          >
+                            <SelectTrigger className="h-8 w-[150px] text-xs mx-auto">
+                              <SelectValue>{renderCurrentValue(currentVal)}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {trop && (
+                                <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-orange-600 bg-orange-50 border-b">
+                                  <Info className="h-3 w-3 shrink-0" />
+                                  {seances}/{MAX_SEANCES} séances déjà atteint
+                                </div>
+                              )}
+                              {complete && optionsPhysiques.length === 0 && (
+                                <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b">
+                                  <Info className="h-3 w-3 shrink-0" />
+                                  Toutes les salles physiques sont occupées
+                                </div>
+                              )}
+                              {optionsPhysiques.map(opt => {
+                                const [, statut] = opt.value.split('|')
+                                return (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    <span className="flex items-center gap-1.5 text-xs">
+                                      <span className="text-muted-foreground font-mono">{opt.label.split(' · ')[0]}</span>
+                                      <span className="text-muted-foreground">·</span>
+                                      <StatutBadge statut={statut as StatutFixe} />
+                                    </span>
+                                  </SelectItem>
+                                )
+                              })}
+                              {optionsPhysiques.length > 0 && <div className="h-px bg-border my-1" />}
+                              {!dejaDistance && !isSamedi && (
+                                <>
+                                  <SelectItem value="Distance Matin"><StatutBadge statut="Distance Matin" /></SelectItem>
+                                  <SelectItem value="Distance Après-midi"><StatutBadge statut="Distance Après-midi" /></SelectItem>
+                                </>
+                              )}
+                              <SelectItem value="Repos"><StatutBadge statut="Repos" /></SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </td>
                     )
                   })}
@@ -1476,6 +1501,7 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
   const [selectedMois, setSelectedMois] = useState(now.getMonth() + 1)
   const [selectedAnnee, setSelectedAnnee] = useState(now.getFullYear())
   const supabase = createClient()
+  const { isFormateur } = useRole()
 
   const isPoolMixed = activeScenario?.config && 'type' in activeScenario.config && activeScenario.config.type === 'pool_mixed'
 
@@ -1667,31 +1693,33 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
               badge={isPoolMixed ? 'Pool mixte' : 'Fixe'}
             />
           </div>
-          {/* Sélecteur mois/année pour le panneau Rotation Samedi */}
-          <div className="flex items-center gap-2 shrink-0 mt-1">
-            <RotateCcw className="h-4 w-4 text-muted-foreground/60" />
-            <span className="text-xs text-muted-foreground">Mois rotation :</span>
-            <Select value={String(selectedMois)} onValueChange={v => setSelectedMois(Number(v))}>
-              <SelectTrigger className="h-7 w-[110px] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MOIS_LABELS.map((label, i) => (
-                  <SelectItem key={i + 1} value={String(i + 1)} className="text-xs">{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={String(selectedAnnee)} onValueChange={v => setSelectedAnnee(Number(v))}>
-              <SelectTrigger className="h-7 w-[80px] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {annees.map(a => (
-                  <SelectItem key={a} value={String(a)} className="text-xs">{a}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Sélecteur mois/année pour le panneau Rotation Samedi (admin uniquement) */}
+          {!isFormateur && (
+            <div className="flex items-center gap-2 shrink-0 mt-1">
+              <RotateCcw className="h-4 w-4 text-muted-foreground/60" />
+              <span className="text-xs text-muted-foreground">Mois rotation :</span>
+              <Select value={String(selectedMois)} onValueChange={v => setSelectedMois(Number(v))}>
+                <SelectTrigger className="h-7 w-[110px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MOIS_LABELS.map((label, i) => (
+                    <SelectItem key={i + 1} value={String(i + 1)} className="text-xs">{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={String(selectedAnnee)} onValueChange={v => setSelectedAnnee(Number(v))}>
+                <SelectTrigger className="h-7 w-[80px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {annees.map(a => (
+                    <SelectItem key={a} value={String(a)} className="text-xs">{a}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         {activeScenario && (
           <div className={`mt-2 text-xs px-3 py-1.5 rounded inline-flex items-center gap-2 ${
@@ -1710,6 +1738,7 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           planning={planning}
           saving={saving}
           onAssign={handlePoolAssign}
+          isFormateur={isFormateur}
         />
       ) : (
         <StandardView
@@ -1730,6 +1759,7 @@ export function PlanningFixeClient({ salles, groupes, formateurs, planningFixe, 
           onAutoRotation={handleAutoRotation}
           onAncrageSave={handleAncrageSave}
           onApplyRotation={handleApplyRotation}
+          isFormateur={isFormateur}
         />
       )}
     </div>

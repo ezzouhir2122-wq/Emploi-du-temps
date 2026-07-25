@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, ChevronDown, Building2 } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import type { Pole, TypeScenario } from '@/types/planning'
+import { useRole } from '@/components/RoleProvider'
 
 const SCENARIOS: { value: TypeScenario; label: string; short: string; badgeCls: string }[] = [
   { value: 'groups_fixed',    label: 'A — Groupes fixes',   short: 'A', badgeCls: 'bg-blue-100 text-blue-700 border-blue-200' },
@@ -27,6 +28,7 @@ interface Props {
 export function PlanningPoleHeader({ pole, allPoles }: Props) {
   const router      = useRouter()
   const supabase    = createClient()
+  const { isFormateur } = useRole()
   const current     = SCENARIOS.find(s => s.value === pole.scenario_type) ?? SCENARIOS[0]
   const [open, setOpen] = useState(false)
   const dropRef     = useRef<HTMLDivElement>(null)
@@ -137,20 +139,22 @@ export function PlanningPoleHeader({ pole, allPoles }: Props) {
         )}
       </div>
 
-      {/* ── Scénario badge + picker ── */}
+      {/* ── Scénario badge + picker (picker admin uniquement) ── */}
       <div className="ml-auto flex items-center gap-2 shrink-0">
         <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${current.badgeCls}`}>
           Scénario {current.short}
         </span>
-        <select
-          defaultValue={pole.scenario_type}
-          onChange={e => handleScenarioChange(e.target.value as TypeScenario)}
-          className="text-xs border rounded-lg px-2 h-8 bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-[#005FAD]/20"
-        >
-          {SCENARIOS.map(s => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
+        {!isFormateur && (
+          <select
+            defaultValue={pole.scenario_type}
+            onChange={e => handleScenarioChange(e.target.value as TypeScenario)}
+            className="text-xs border rounded-lg px-2 h-8 bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-[#005FAD]/20"
+          >
+            {SCENARIOS.map(s => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        )}
       </div>
     </div>
   )
