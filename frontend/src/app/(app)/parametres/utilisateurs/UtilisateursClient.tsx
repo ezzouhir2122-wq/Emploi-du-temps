@@ -17,8 +17,8 @@ export interface ProfileRow {
 export interface FormateurOption { id: string; nom: string }
 
 export function UtilisateursClient({
-  initialProfiles, formateurs,
-}: { initialProfiles: ProfileRow[]; formateurs: FormateurOption[] }) {
+  initialProfiles, formateurs, currentUserId,
+}: { initialProfiles: ProfileRow[]; formateurs: FormateurOption[]; currentUserId: string | null }) {
   const supabase = createClient()
   const [rows, setRows] = useState<ProfileRow[]>(initialProfiles)
   const [busy, setBusy] = useState<string | null>(null)
@@ -60,6 +60,7 @@ export function UtilisateursClient({
   }
 
   async function refuser(row: ProfileRow) {
+    if (row.id === currentUserId) return
     setBusy(row.id)
     const { error } = await supabase.from('profiles')
       .update({ statut: 'refuse', role: null, formateur_id: null }).eq('id', row.id)
@@ -126,7 +127,12 @@ export function UtilisateursClient({
             <div key={row.id} className="rounded-lg border border-gray-100 bg-white p-2.5 flex items-center gap-3 text-sm">
               <span className="flex-1 font-medium">{row.nom ?? row.email}</span>
               <span className="text-xs rounded-full bg-gray-100 px-2 py-0.5">{row.role}</span>
-              <button onClick={() => refuser(row)} className="text-xs text-red-500 hover:underline">Révoquer</button>
+              <button
+                onClick={() => refuser(row)}
+                disabled={busy === row.id || row.id === currentUserId}
+                title={row.id === currentUserId ? 'Vous ne pouvez pas révoquer votre propre compte' : undefined}
+                className={`text-xs hover:underline ${row.id === currentUserId ? 'text-gray-300 cursor-not-allowed' : 'text-red-500'}`}
+              >Révoquer</button>
             </div>
           ))}
         </div>
