@@ -449,7 +449,7 @@ export function FormateurPlanningPDF({
             <Text style={s.summaryCaption}>Volume horaire hebdo</Text>
           </View>
           <View style={[s.summaryCell, { backgroundColor: '#FFFBEB' }]}>
-            <Text style={[s.summaryBigNum, { color: GOLD }]}>{joursActifs}<Text style={[s.summaryNumUnit, { color: GOLD }]}>/6</Text></Text>
+            <Text style={[s.summaryBigNum, { color: GOLD }]}>{joursActifs}<Text style={[s.summaryNumUnit, { color: GOLD }]}>/5</Text></Text>
             <Text style={s.summaryCaption}>Jours travaillés</Text>
           </View>
           <View style={[s.summaryCellLast, { flex: 3, alignItems: 'flex-start', paddingHorizontal: 16 }]}>

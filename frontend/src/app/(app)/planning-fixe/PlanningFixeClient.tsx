@@ -910,11 +910,19 @@ function StandardView({
                                 }))
                               }
                               totalSeances={seances}
-                              totalHeures={
-                                planning
-                                  .filter(p => p.formateur_id === formateur.id)
-                                  .reduce((acc, p) => acc + (DUREE_HEURES[p.statut] ?? 0), 0)
-                              }
+                              totalHeures={(() => {
+                                const rows = planning.filter(p => p.formateur_id === formateur.id)
+                                const seen = new Set<string>()
+                                return rows.reduce((acc, p) => {
+                                  // FAD fusionné : 1 ligne par groupe → dédupliquer par (jour, statut)
+                                  if (FAD_STATUTS_ALL.includes(p.statut)) {
+                                    const key = `${p.jour_semaine}:${p.statut}`
+                                    if (seen.has(key)) return acc
+                                    seen.add(key)
+                                  }
+                                  return acc + (DUREE_HEURES[p.statut] ?? 0)
+                                }, 0)
+                              })()}
                               dateGeneration={new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
                             />
                           </div>
