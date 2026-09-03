@@ -4,6 +4,7 @@ import {
   Document, Page, View, Text, StyleSheet, Image as PDFImage,
 } from '@react-pdf/renderer'
 import type { JourSemaine, StatutFixe } from '@/types/planning'
+import { DUREE_HEURES } from '@/types/planning'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -309,7 +310,21 @@ export function FormateurPlanningPDF({
     return planning.some(r => (allStatuts as string[]).includes(r.statut))
   })
 
-  const joursActifs = JOURS.filter(j => hasAnySession(planning, j)).length
+  // Jours travaillés Lun-Ven (max 5 — Samedi hors quota)
+  const JOURS_MON_VEN_PDF: JourSemaine[] = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi']
+  const joursActifs = JOURS_MON_VEN_PDF.filter(j => hasAnySession(planning, j)).length
+
+  // Volume horaire : dédupliquer les lignes FAD fusionnées (1 créneau = 2h30, peu importe le nombre de groupes)
+  const FAD_STATUTS_PDF = ['FAD Matin S1','FAD Matin S2','FAD Après-midi S1','FAD Après-midi S2','FAD Matin','FAD Après-midi','FAD 1h']
+  const seenFad = new Set<string>()
+  const totalHeuresCalc = planning.reduce((acc, p) => {
+    if (FAD_STATUTS_PDF.includes(p.statut)) {
+      const key = `${p.jour_semaine}:${p.statut}`
+      if (seenFad.has(key)) return acc
+      seenFad.add(key)
+    }
+    return acc + (DUREE_HEURES[p.statut] ?? 0)
+  }, 0)
   const refDoc = `EDT-${dateGeneration.replace(/\//g, '')}-${matricule ?? 'X'}`
 
   return (
@@ -445,7 +460,7 @@ export function FormateurPlanningPDF({
             <Text style={s.summaryCaption}>Séances / semaine</Text>
           </View>
           <View style={[s.summaryCell, { backgroundColor: '#F0FDF4' }]}>
-            <Text style={[s.summaryBigNum, { color: GREEN }]}>{totalHeures}<Text style={[s.summaryNumUnit, { color: GREEN }]}>h</Text></Text>
+            <Text style={[s.summaryBigNum, { color: GREEN }]}>{totalHeuresCalc}<Text style={[s.summaryNumUnit, { color: GREEN }]}>h</Text></Text>
             <Text style={s.summaryCaption}>Volume horaire hebdo</Text>
           </View>
           <View style={[s.summaryCell, { backgroundColor: '#FFFBEB' }]}>
