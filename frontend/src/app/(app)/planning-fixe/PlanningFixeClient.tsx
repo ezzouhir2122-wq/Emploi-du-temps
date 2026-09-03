@@ -39,7 +39,7 @@ const ROTATION_SUIVANTE: Record<StatutSamedi, StatutSamedi> = {
 const STATUTS_TRAVAIL = STATUTS_TRAVAIL_BASE
 // Statuts physiques (occupent la salle)
 const STATUTS_PHYSIQUES_FP: StatutFixe[] = ['Matin FP S1', 'Matin FP S2', 'Après-midi FP S1', 'Après-midi FP S2']
-const MAX_SEANCES = 10      // 5 jours × 2 sous-séances/jour
+const MAX_SEANCES = 20      // 5 jours × 4 sous-créneaux/jour (matin + après-midi)
 const JOURS_MON_VEN: JourSemaine[] = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
 // 6 jours × 4 sous-créneaux (MS1, MS2, PMS1, PMS2) = 24 sous-créneaux max par salle
 const MAX_CRENEAUX_SALLE = 24
@@ -626,22 +626,12 @@ function StandardView({
 
     if (countSeances(formateurId) >= MAX_SEANCES) return []
 
-    // Demi-journée déjà commencée → filtrer par cohérence
-    const demiJourneeActive = [...dejaActifs]
-      .map(getHalfDay)
-      .find(h => h !== null) ?? null
-
     const isSamedi = jour === 'Samedi'
 
     return STATUTS_FIXES.filter(s => {
       if (dejaActifs.has(s)) return false
       if (prisParSalle.has(s)) return false
       if (isSamedi && (s === 'FAD Matin' || s === 'FAD Après-midi')) return false
-      // Si une demi-journée est déjà active, n'offrir que ses sous-séances
-      if (demiJourneeActive) {
-        const sHalf = getHalfDay(s)
-        if (sHalf && sHalf !== demiJourneeActive) return false
-      }
       return true
     })
   }
@@ -886,7 +876,7 @@ function StandardView({
                             <SeancesBadge count={seances} />
                             <div className="flex gap-1 mt-0.5 flex-wrap">
                               <span className={`text-[8px] px-1.5 py-0.5 rounded font-semibold ${weeklyPresentielDays >= 4 ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300' : 'bg-slate-100 text-slate-400'}`}>
-                                Prés. {weeklyPresentielDays}/4
+                                Prés. {weeklyPresentielDays}/10
                               </span>
                               <span className={`text-[8px] px-1.5 py-0.5 rounded font-semibold ${weeklyFad2h30 >= 2 ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300' : weeklyFad2h30 >= 1 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>
                                 FAD {weeklyFad2h30}/2
@@ -1056,7 +1046,7 @@ function StandardView({
                           const reposExcedentaire = !isSamedi && isEmpty && weeklyReposCount > (satHasSession ? 2 : 1)
                           // Salle complète ce jour (FP pris par 2 autres formateurs, présentiel impossible)
                           // → Ne s'applique pas le samedi (rotation : chaque formateur a son propre samedi)
-                          const salleCompleteCeJour = !isSamedi && isEmpty && !hasFadAny && matinFPPris && pmFPPris && weeklyPresentielDays < 4
+                          const salleCompleteCeJour = !isSamedi && isEmpty && !hasFadAny && matinFPPris && pmFPPris && weeklyPresentielDays < 10
 
                           return (
                             <td key={jour} className={`px-1 py-1.5 align-top min-w-[150px] max-w-[180px] ${isSamedi ? 'border-l-2 border-dashed border-muted-foreground/30 bg-emerald-50/30' : ''}`}>
@@ -1064,7 +1054,7 @@ function StandardView({
 
                                 {/* ── BLOC MATIN FP ── */}
                                 {/* Samedi : exclusivité salle désactivée (chaque formateur a son propre samedi en rotation) */}
-                                {(hasMatinBlock || ((!matinFPPris || isSamedi) && (!blockFpMatS1 || !blockFpMatS2) && canAdd && weeklyPresentielDays < 4)) && (
+                                {(hasMatinBlock || ((!matinFPPris || isSamedi) && (!blockFpMatS1 || !blockFpMatS2) && canAdd && weeklyPresentielDays < 10)) && (
                                   <div className="rounded-lg border-2 border-blue-200 overflow-hidden bg-white shadow-sm">
                                     <div className="px-2 py-1 bg-blue-600 flex items-center gap-1.5">
                                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">☀ Matin FP</span>
@@ -1084,7 +1074,7 @@ function StandardView({
                                 )}
 
                                 {/* ── BLOC APRÈS-MIDI FP ── */}
-                                {(hasPmBlock || ((!pmFPPris || isSamedi) && (!blockFpPmS1 || !blockFpPmS2) && canAdd && weeklyPresentielDays < 4)) && (
+                                {(hasPmBlock || ((!pmFPPris || isSamedi) && (!blockFpPmS1 || !blockFpPmS2) && canAdd && weeklyPresentielDays < 10)) && (
                                   <div className="rounded-lg border-2 border-green-200 overflow-hidden bg-white shadow-sm">
                                     <div className="px-2 py-1 bg-green-600 flex items-center gap-1.5">
                                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">🌿 Après-midi FP</span>
